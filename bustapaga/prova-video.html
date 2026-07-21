@@ -34,15 +34,15 @@
   .video-eti { display:inline-flex; align-items:center; gap:8px; color:#827F75; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }
   .video-eti svg { width:16px; height:16px; }
 
-  .video-anteprima { display:block; position:relative; width:100%; aspect-ratio:16/9; padding:0; border:1px solid #D9DACF; cursor:pointer; border-radius:16px; overflow:hidden; background:#000; }
-  .video-anteprima img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .video-anteprima { display:block; position:relative; width:100%; aspect-ratio:16/9; padding:0; border:1px solid #D9DACF; cursor:pointer; border-radius:8px; overflow:hidden; background:transparent; }
+  .video-anteprima img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:7px; }
   .video-anteprima .play { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:78px; height:54px; border-radius:14px; background:#E65900; display:flex; align-items:center; justify-content:center; transition:transform .15s ease; }
   .video-anteprima:hover .play { transform:translate(-50%,-50%) scale(1.06); }
   .video-anteprima .play span { width:0; height:0; border-style:solid; border-width:11px 0 11px 19px; border-color:transparent transparent transparent #fff; margin-left:4px; }
   .video-anteprima .fascia { position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; gap:8px; padding:13px 16px; background:linear-gradient(transparent, rgba(0,0,0,.74)); color:#fff; font-family:'Schibsted Grotesk',sans-serif; font-size:13px; font-weight:600; letter-spacing:.01em; }
 
-  .video-cornice { position:relative; width:100%; aspect-ratio:16/9; border-radius:16px; overflow:hidden; border:1px solid #D9DACF; background:#000; }
-  .video-cornice iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
+  .video-cornice { position:relative; width:100%; aspect-ratio:16/9; border-radius:8px; overflow:hidden; border:1px solid #D9DACF; background:transparent; }
+  .video-cornice iframe { position:absolute; inset:0; width:100%; height:100%; border:0; border-radius:7px; }
 
   .apri-yt { display:inline-flex; align-items:center; gap:9px; margin-top:14px; background:rgba(230,89,0,.10); border:1px solid #DD977A; color:#a34613; border-radius:12px; padding:10px 16px; font-family:'Schibsted Grotesk',sans-serif; font-size:13px; font-weight:600; text-decoration:none; }
   .apri-yt:hover { background:rgba(230,89,0,.16); }
