@@ -67,8 +67,8 @@ blockquote.def .src { border-top:1px solid #d8e5dc !important; }
 .boxlist li:nth-child(4n+2){background:#eef3f9 !important;border:1px solid #5A82AB !important;border-left:5px solid #5A82AB !important;}
 .boxlist li:nth-child(4n+3){background:#f3f0f8 !important;border:1px solid #7B66A4 !important;border-left:5px solid #7B66A4 !important;}
 .boxlist li:nth-child(4n+4){background:#fbf1e7 !important;border:1px solid #C07F49 !important;border-left:5px solid #C07F49 !important;}
-/* numeri sempre in Fraunces, anche dentro le mappe */
-svg.mappa text.num, svg.mappa tspan.num{font-family:'Fraunces',Georgia,serif !important;font-weight:600;font-variant-numeric:lining-nums !important;}
+/* numeri sempre in Fraunces, in TUTTE le grafiche (la regola "text" dentro la mappa grande vale per tutta la pagina e senza questo override vincerebbe lei) */
+svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font-weight:600;font-variant-numeric:lining-nums !important;}
 /* infografiche aggiunte */
 .gf-archi{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin:26px 0 4px;}
 .gf-archi .arco{text-align:center;}
@@ -79,7 +79,7 @@ svg.mappa text.num, svg.mappa tspan.num{font-family:'Fraunces',Georgia,serif !im
 @media (max-width:680px){.gf-archi{grid-template-columns:1fr;}.gf-archi .num{margin-top:-48px;}}
 .gf-tempo-scorri{overflow-x:auto;padding:4px 0;}
 .gf-tempo{position:relative;min-width:720px;height:216px;}
-.gf-tempo::before{content:"";position:absolute;left:36px;right:36px;top:108px;height:2px;background:#D9DACF;}
+.gf-tempo::before{content:"";position:absolute;left:72px;width:584px;top:108px;height:2px;background:#D9DACF;}
 .gf-tappa{position:absolute;top:80px;width:144px;text-align:center;}
 .gf-tappa .pill{width:56px;height:56px;border-radius:50%;margin:0 auto;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;font-size:22px;border:2px solid;box-shadow:0 4px 8px rgba(0,0,0,.10);}
 .gf-tappa .testo{position:absolute;left:0;right:0;}
