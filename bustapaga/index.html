@@ -81,15 +81,15 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
 .gf-tempo{position:relative;min-width:720px;height:216px;}
 .gf-tempo::before{content:"";position:absolute;left:72px;width:584px;top:108px;height:2px;background:#D9DACF;}
 .gf-tappa{position:absolute;top:80px;width:144px;text-align:center;}
-.gf-tappa .pill{width:56px;height:56px;border-radius:50%;margin:0 auto;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;font-size:22px;border:2px solid;box-shadow:0 4px 8px rgba(0,0,0,.10);}
+.gf-tappa .pill{width:56px;height:56px;border-radius:50%;margin:0 auto;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;font-size:22px;border:2px solid;}
 .gf-tappa .testo{position:absolute;left:0;right:0;}
 .gf-tappa.su .testo{bottom:64px;}
 .gf-tappa.giu .testo{top:64px;}
 .gf-tappa h4{font-family:'Fraunces',serif;font-weight:600;font-size:15px;margin:0 0 2px;color:#262420;}
 .gf-tappa p{font-size:11.5px;color:#827F75;margin:0;line-height:1.35;}
 .gf-scala{display:flex;align-items:flex-end;gap:16px;margin:26px 4px 0;min-height:230px;}
-.gf-scala .gradino{flex:1;border-radius:14px 14px 10px 10px;border:1.5px solid;position:relative;box-shadow:0 7px 16px rgba(0,0,0,.06);}
-.gf-scala .npill{position:absolute;top:10px;left:10px;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid #D9DACF;box-shadow:0 3px 7px rgba(0,0,0,.14);display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:#262420;}
+.gf-scala .gradino{flex:1;border-radius:14px 14px 10px 10px;border:1.5px solid;position:relative;}
+.gf-scala .npill{position:absolute;top:10px;left:10px;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid #D9DACF;display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:#262420;}
 .gf-scala-eti{display:flex;gap:16px;margin-top:10px;}
 .gf-scala-eti div{flex:1;text-align:center;}
 .gf-scala-eti h4{font-family:'Fraunces',serif;font-weight:600;font-size:15.5px;margin:0 0 2px;color:#262420;}
@@ -113,6 +113,7 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
 .shelfc{background:var(--tn);border:1.5px solid var(--cp);border-left-width:7px;border-bottom-width:7px;border-radius:16px;padding:20px 24px;margin:26px 0 0;}
 .shelfc .shelfeti{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--et);margin-bottom:8px;display:flex;align-items:center;gap:7px;}
 .shelfc .shelfeti::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--cp);}
+.shelfc .shelfeti:has(svg)::before{display:none;}
 .shelfc p{font-size:16.5px;line-height:1.65;margin:0;color:#262420;}
 </style>
 
@@ -139,6 +140,28 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
    qui si rimettono alla larghezza per cui sono nate. Dentro non si tocca nulla. */
 #p-sintesi svg.mappa{max-width:830px;margin-left:auto;margin-right:auto;}
 #p-ese div[id^="c3p"] svg{max-width:734px;margin-left:auto;margin-right:auto;}
+</style>
+
+<style>
+/* 24/07: RESA DA SMARTPHONE (regole ricavate dal Modulo 1 di riferimento + binario grafiche) */
+@media (max-width: 860px) {
+  .card [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  .card [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 700px) {
+  .card .wm { font-size: 44px !important; right: 18px !important; bottom: 16px !important; }
+  #p-lez h1 { font-size: 34px !important; letter-spacing: -1px !important; }
+  .shelfc { padding: 16px 18px !important; }
+  blockquote.def { padding: 22px 20px 16px !important; }
+  /* il binario: le grafiche larghe non si schiacciano, si fanno scorrere col dito */
+  .binario { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .binario > svg { min-width: 740px; }
+}
+@media (max-width: 520px) {
+  .card { padding: 22px 16px 76px !important; }
+  #p-lez h1 { font-size: 28px !important; }
+  .card h2 { font-size: 24px !important; }
+}
 </style>
 </head>
 <body>
@@ -212,14 +235,9 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <h2>La busta paga in due minuti.</h2>
         <p class="t">Prima di entrare nei numeri, guarda questo breve video: racconta in modo semplice che cos'è la busta paga e a che cosa serve. Poi, card dopo card, smonteremo quel foglio pezzo per pezzo.</p>
         <div data-noprint="1" style="margin:26px 0 0;position:relative;">
-          <div class="video-eti">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-            Guarda il video
-          </div>
-          <button class="video-anteprima" id="video-ant" onclick="avviaVideo()" aria-label="Avvia il video nella pagina">
+                    <button class="video-anteprima" id="video-ant" onclick="avviaVideo()" aria-label="Avvia il video nella pagina">
             <img src="assets/miniatura-video.jpg" alt="Anteprima del video: Lavoro istruzioni per l'uso, la busta paga">
             <span class="play"><span></span></span>
-            <span class="fascia" id="video-fascia">Guarda il video qui · 2 minuti</span>
           </button>
           <div class="video-cornice" id="video-cor" style="display:none;"></div>
           <a class="apri-yt" href="https://www.youtube.com/watch?v=xm_Vuva4vhY" target="_blank" rel="noopener">
@@ -263,8 +281,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
             <div class="gf-tappa su" style="left:584px;"><div class="testo"><h4>Controlli</h4><p>e lo metti via</p></div><div class="pill" style="background:#F0B783;border-color:#C07F49;color:#663e18;">5</div></div>
           </div></div>
         </div>
-      
-        <div class="shelfc" style="--tn:#f9efea;--cp:#AC6144;--et:#8a4a30;"><div class="shelfeti">Da ricordare</div><p>La retribuzione non è un favore: è un diritto scritto nella Costituzione, e deve bastare per una vita libera e dignitosa.</p></div>
       </section>
 
       <!-- ===== CARD 02 · Il CCNL ===== -->
@@ -299,8 +315,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
             </g></svg>
         </div>
         <p class="t">I tre livelli funzionano come una scala: il CCNL nazionale fissa la base sotto la quale non si può scendere, il contratto aziendale o territoriale può <strong>aggiungere</strong> qualcosa, e l'accordo individuale può migliorare ancora la posizione del singolo lavoratore - mai peggiorarla. Il panificio di Marco applica il <strong class="hl">CCNL Alimentari Artigianato</strong>, il contratto delle aziende artigiane del settore alimentare: panifici, pasticcerie, pastifici e affini.</p>
-      
-        <div class="shelfc" style="--tn:#eef5f0;--cp:#5C8B73;--et:#3f6b52;"><div class="shelfeti">Da ricordare</div><p>Il CCNL è la regola del gioco: fissa i minimi sotto cui nessun datore può scendere, per tutto il settore.</p></div>
       </section>
 
       <!-- ===== CARD 03 · Gli elementi fissi ===== -->
@@ -371,8 +385,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
           <img src="assets/glassa.jpg" alt="Un pasticcere cola la glassa sui pasticcini appena decorati" style="display:block;width:100%;height:auto;aspect-ratio:3/4;object-fit:cover;border-radius:0 8px 8px 0;">
         </div></div>
         <p class="t">Fissi più accessori: 2.092,55 + 218,16 = <strong class="hl">2.310,71 euro</strong>. Questa è la <strong>retribuzione lorda</strong> di Marco per il mese di marzo. "Lorda" perché - lo vedrai nel prossimo blocco - da qui bisogna ancora togliere contributi e imposte: nessun lavoratore riceve in tasca il lordo.</p>
-      
-        <div class="shelfc" style="--tn:#fbf1e7;--cp:#C07F49;--et:#8a5320;"><div class="shelfeti">Da ricordare</div><p>Le voci accessorie cambiano ogni mese: per Marco, a marzo, 218,16 euro tra straordinario e premio.</p></div>
       </section>
 
       <!-- ===== CARD 05 · Mensilità aggiuntive e fringe benefit ===== -->
@@ -384,8 +396,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <p class="t">Alcuni CCNL - per esempio quello del commercio e diversi contratti dell'alimentare - prevedono anche la <strong>quattordicesima</strong>, di solito pagata a giugno, all'inizio dell'estate. Il contratto di Marco prevede <strong class="hl">tredici mensilità</strong>: un dettaglio che ritroverai nei calcoli, perché quando si stima il reddito di un anno intero bisogna moltiplicare la paga mensile per tredici, non per dodici.</p>
         <p class="t">Accanto al denaro, il datore può riconoscere compensi <strong>in natura</strong>: i <strong>fringe benefit</strong>. Sono beni e servizi che non passano per il portafoglio ma hanno un valore reale: i buoni pasto, l'auto aziendale, il telefono, i buoni spesa. Entro certi limiti di valore fissati dalla legge non pagano imposte: per questo le aziende li usano volentieri per integrare la retribuzione. Un supermercato può dare ai cassieri i buoni pasto; un'impresa edile può dare al capocantiere il furgone anche per l'uso personale; una software house può offrire ai dipendenti l'abbonamento ai mezzi.</p>
         <p class="t">Con questa card conosci tutte le voci <strong>positive</strong> della busta: quelle che costruiscono la retribuzione lorda. Il primo blocco si chiude con una mappa d'insieme: il viaggio che quei soldi devono ancora fare prima di arrivare in tasca.</p>
-      
-        <div class="shelfc" style="--tn:#fbeff2;--cp:#B6677B;--et:#93455a;"><div class="shelfeti">Da ricordare</div><p>Tredicesima e quattordicesima non sono regali: sono retribuzione che matura mese per mese e arriva tutta insieme.</p></div>
       </section>
 
       <!-- ===== CARD 06 · Dal lordo al netto: la mappa ===== -->
@@ -621,8 +631,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <p class="t">Tieni questa mappa come bussola: <strong>tutto il resto del modulo è dentro questo disegno</strong>. Il blocco 2 apre la prima fermata (i contributi, con INPS e INAIL), il blocco 3 la seconda (l'IRPEF, le detrazioni, le addizionali), e alla fine rimetteremo insieme tutti i pezzi nella busta paga completa di Marco.</p>
       
         <div class="shelfc" style="--tn:#fbeff2;--cp:#B6677B;--et:#93455a;"><div class="shelfeti">L'errore da non fare</div><p>Confrontare un lordo con un netto. Se un annuncio di lavoro promette una cifra, chiediti sempre di quale delle due parla: tra le due ballano centinaia di euro.</p></div>
-      
-        <div class="shelfc" style="--tn:#faf4e2;--cp:#BB963C;--et:#7a611f;"><div class="shelfeti">Da ricordare</div><p>Dal lordo al netto la strada è sempre la stessa: prima i contributi, poi le imposte, e quello che resta entra in tasca.</p></div>
       </section>
 
 
@@ -641,8 +649,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         </blockquote>
         <p class="t">Questo sistema si chiama <strong class="hl">previdenza sociale</strong>: "previdenza" viene da <em>prevedere</em>. Nessuno, da solo, riuscirebbe a mettere da parte abbastanza per affrontare una vecchiaia di trent'anni, un infortunio serio o un periodo di disoccupazione. Per questo lo Stato ha creato delle <strong>assicurazioni obbligatorie</strong>: ogni mese una quota della retribuzione di tutti i lavoratori confluisce in un <strong>fondo comune</strong>, e da quel fondo escono le pensioni e i sostegni di chi ne ha bisogno oggi.</p>
         <p class="t">Nota bene: i contributi che Marco versa oggi non finiscono in un salvadanaio con il suo nome sopra - pagano le pensioni di chi è anziano <strong>adesso</strong>. Quando toccherà a lui, la sua pensione la pagheranno i lavoratori di domani. È un patto fra generazioni, e funziona solo se tutti versano: ecco perché il lavoro "in nero", senza contributi, è un danno prima di tutto per il lavoratore stesso. A gestire questo grande meccanismo sono due enti pubblici che ora conosciamo da vicino: <strong>INPS</strong> e <strong>INAIL</strong>.</p>
-      
-        <div class="shelfc" style="--tn:#f3f0f8;--cp:#7B66A4;--et:#5a4a72;"><div class="shelfeti">Da ricordare</div><p>I contributi non sono soldi persi: sono la pensione di domani e il paracadute di oggi, versati mentre lavori.</p></div>
       </section>
 
       <!-- ===== CARD 08 · INPS ===== -->
@@ -661,8 +667,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
             <g><rect x="520" y="170" width="500" height="150" rx="14" fill="#ffffff" stroke="#eccaa4" stroke-width="1.6"/><svg x="542" y="192" width="50" height="50" viewBox="0 0 24 24"><g fill="none"><path fill="#ffdda1" d="M14.9 10.194a.5.5 0 0 0-.298-.1H9.41a.5.5 0 0 0-.298.1c-2.15 1.642-4.556 4.82-4.556 7.346C4.555 21.105 6.54 23 12 23s7.446-1.895 7.446-5.46c0-2.526-2.396-5.704-4.546-7.346"/><path fill="#ffbc44" d="M12 18.451c-4.014 0-6.155-1.025-7-2.985a5.7 5.7 0 0 0-.445 2.071c0 3.565 1.985 5.46 7.445 5.46s7.446-1.895 7.446-5.46a5.7 5.7 0 0 0-.444-2.074c-.847 1.96-2.985 2.988-7.002 2.988"/><path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M8.526 8.106h6.95"/><path fill="#ffbc44" stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M15.713 2.444a.497.497 0 0 0-.633-.695l-2.084.894l-.531-1.33a.496.496 0 0 0-.923 0l-.534 1.333l-2.084-.894a.496.496 0 0 0-.633.695c.58 1.004.988 2.1 1.204 3.239a.496.496 0 0 0 .497.435h4.035a.496.496 0 0 0 .497-.435a10.3 10.3 0 0 1 1.19-3.242z"/><path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M12.496 13.566v-.993m1.489.993h-2.014a1.333 1.333 0 0 0-.496 2.568l2.048.82a1.331 1.331 0 0 1-.497 2.569h-2.019m1.489.992v-.993"/><path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M14.9 10.194a.5.5 0 0 0-.298-.1H9.41a.5.5 0 0 0-.298.1c-2.15 1.642-4.556 4.82-4.556 7.346C4.555 21.105 6.54 23 12 23s7.446-1.895 7.446-5.46c0-2.526-2.396-5.704-4.546-7.346"/></g></svg><text x="614" y="218" font-family="Fraunces, serif" font-weight="600" font-size="19" fill="#262420">Le famiglie</text><text x="614" y="246" font-size="13.5" fill="#33312c">l’Assegno Unico e Universale per i figli,</text><text x="614" y="266" font-size="13.5" fill="#33312c">pagato direttamente sul conto dei genitori</text></g>
             </g></svg></div>
         <p class="t">Per Marco, oggi, l'INPS è solo una riga di trattenuta: 212,35 euro al mese. Ma quella riga è il suo biglietto d'ingresso a tutte le tutele di questa card: la pensione che avrà, la NASpI se il panificio un giorno chiudesse, l'indennità se si ammalasse. Ogni contributo versato costruisce la sua <strong>posizione contributiva</strong>: il conto personale, custodito dall'INPS, dove sono registrate tutte le settimane di lavoro della sua vita.</p>
-      
-        <div class="shelfc" style="--tn:#edf5f4;--cp:#4E918C;--et:#2f635f;"><div class="shelfeti">Da ricordare</div><p>L'INPS sostituisce il reddito quando il lavoro non può darlo: pensione, disoccupazione, malattia, sostegno alle famiglie.</p></div>
       </section>
 
       <!-- ===== CARD 09 · INAIL ===== -->
@@ -708,8 +712,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <p class="t">Tolti i contributi, sulla busta di Marco resta la cifra su cui lo Stato calcola le imposte: 2.310,71 − 212,35 = <strong class="hl">2.098,36 euro di imponibile fiscale</strong>. Ed è qui che entra in scena la protagonista del prossimo gruppo di card: l'<strong>IRPEF</strong>.</p>
       
         <div class="shelfc" style="--tn:#fbeff2;--cp:#B6677B;--et:#93455a;"><div class="shelfeti">L'errore da non fare</div><p>Credere che la trattenuta in busta sia tutto il contributo: quella è solo la quota di Marco. La parte del datore, molto più grande, viaggia fuori busta.</p></div>
-      
-        <div class="shelfc" style="--tn:#eef5f0;--cp:#5C8B73;--et:#3f6b52;"><div class="shelfeti">Da ricordare</div><p>In busta vedi solo la tua quota di contributi, il 9,19%: il datore ne versa circa il triplo, fuori busta.</p></div>
       </section>
 
 
@@ -732,8 +734,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <p class="t">L'errore classico da non fare mai: pensare che chi guadagna 30.000 euro paghi il 35 % <em>su tutto</em>. No: paga il 23 % sui primi 28.000 e il 35 % solo sui 2.000 che superano il gradino. Nessun aumento di stipendio può mai "non convenire" per colpa delle aliquote: si sale la scala un gradino alla volta, e ogni gradino tassa solo la parte di reddito che gli appartiene.</p>
       
         <div class="shelfc" style="--tn:#fbeff2;--cp:#B6677B;--et:#93455a;"><div class="shelfeti">L'errore da non fare</div><p>Calcolare l'IRPEF sul lordo di partenza: prima si tolgono i contributi, e solo su quello che resta (l'imponibile fiscale) si applicano gli scaglioni.</p></div>
-      
-        <div class="shelfc" style="--tn:#eef3f9;--cp:#5A82AB;--et:#3a5f85;"><div class="shelfeti">Da ricordare</div><p>Il datore è sostituto d'imposta: trattiene l'IRPEF mese per mese e la versa lui allo Stato, al posto tuo.</p></div>
       </section>
 
       <!-- ===== CARD 12 · Il calcolo: scaglioni e detrazioni ===== -->
@@ -757,8 +757,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
           <li><strong>per spese particolari</strong> → mediche, mutuo prima casa, istruzione, veterinarie... queste però si fanno valere dopo, con la dichiarazione dei redditi.</li>
         </ul>
         <p class="t">Per stabilire quanto spetta a Marco, il datore usa il suo reddito annuo presunto (i 27.278,68 euro di prima). Le sue detrazioni valgono <strong>367,35 euro</strong> al mese. Il conto finale: 482,62 − 367,35 = <strong class="hl">115,27 euro di IRPEF netta</strong>. Da quasi cinquecento euro a poco più di cento: ecco perché le detrazioni sono il pezzo del calcolo che cambia di più la vita - e la busta - delle persone.</p>
-      
-        <div class="shelfc" style="--tn:#fbf1e7;--cp:#C07F49;--et:#8a5320;"><div class="shelfeti">Da ricordare</div><p>Le detrazioni tagliano l'imposta, non il reddito: si sottraggono dall'IRPEF lorda, ed è così che l'imposta scende.</p></div>
       </section>
 
       <!-- ===== CARD 13 · Le addizionali ===== -->
@@ -770,8 +768,7 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <p class="t">Le addizionali hanno una regola tutta loro, che sorprende sempre: si calcolano sul reddito <strong class="hl">dell'anno precedente</strong>, e si pagano <strong>a rate</strong> nell'anno successivo, spalmate sulle mensilità per non pesare troppo. Nella busta di marzo di Marco ci sono quindi le rate delle addizionali calcolate sul suo reddito dell'anno scorso: <strong>44,36 euro</strong> di regionale (Piemonte) e <strong>10,28 euro</strong> di comunale (Alba: 6,75 di saldo più 3,53 di acconto per l'anno in corso).</p>
         <p class="t">E le buone notizie? Esistono anche voci che <strong>si aggiungono</strong> invece di togliere. La più importante è il <strong>trattamento integrativo</strong> (l'ex "bonus Renzi"): fino a 1.200 euro l'anno che lo Stato riconosce ai redditi da lavoro dipendente più bassi, direttamente in busta. E per chi ha coniuge, fratelli o sorelle a carico restano gli <strong>assegni per il nucleo familiare</strong>, mentre per i figli c'è l'Assegno Unico pagato dall'INPS che hai visto nella card 08. A Marco, questo mese, non spetta nessuna delle due voci: il suo reddito supera la soglia del trattamento integrativo e per il figlio riceve già l'Assegno Unico fuori busta.</p>
         <p class="t">Con questo, il viaggio delle trattenute è completo: contributi, IRPEF, addizionali. È ora di rimettere insieme tutti i pezzi e leggere, finalmente, <strong>la busta paga intera</strong>.</p>
-      
-        <div class="shelfc" style="--tn:#fbeff2;--cp:#B6677B;--et:#93455a;"><div class="shelfeti">Da ricordare</div><p>Regione e Comune si aggiungono con le addizionali: poche decine di euro, pagate a rate durante l'anno.</p></div>
+        <div class="shelfc" style="--tn:#faf4e2;--cp:#BB963C;--et:#7a611f;"><div class="shelfeti"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#BB963C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-1px;"><path d="M10.24 3.957 1.9 17.88a2 2 0 0 0 1.71 3.02h16.78a2 2 0 0 0 1.71-3.02L13.76 3.957a2 2 0 0 0-3.52 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Attenzione</div><p>Le addizionali di quest'anno si calcolano sul reddito dell'anno scorso e arrivano a rate: possono cambiare anche se lo stipendio è rimasto uguale.</p></div>
       </section>
 
 
@@ -815,8 +812,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
             </g></svg></div>
         <p class="t">La <strong>testata</strong> dice chi sei per l'azienda: nome, qualifica, livello di inquadramento, matricola, contratto applicato, periodo di paga. Il <strong>corpo</strong> è il racconto del mese: prima le voci che costruiscono la retribuzione, poi le trattenute che la riducono. Il <strong>piede</strong> tira le somme: gli imponibili, il TFR accantonato e - nel riquadro più guardato d'Italia - il <strong>netto in busta</strong>.</p>
         <p class="t">Da domani, quando vedrai una busta paga vera - di un genitore, di un datore di stage, un giorno la tua - prova questo esercizio: individua le tre zone. Funziona con qualsiasi cedolino, dal panificio sotto casa alla grande industria.</p>
-      
-        <div class="shelfc" style="--tn:#faf4e2;--cp:#BB963C;--et:#7a611f;"><div class="shelfeti">Da ricordare</div><p>Qualunque veste grafica abbia, una busta paga ha sempre tre zone: testata, corpo e piede.</p></div>
       </section>
 
       <!-- ===== CARD 15 · Il conto completo ===== -->
@@ -842,8 +837,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
           </div>
         </div>
         <p class="t">Nota come ogni riga di questo schema sia una card che hai già letto: le voci (card 03-05), i contributi (07-10), l'IRPEF e le detrazioni (11-12), le addizionali (13). La busta paga non è altro che <strong class="hl">tutto il modulo, compresso in un foglio</strong>. E questo stesso conto, con questi stessi numeri, lo rifarai tu - voce per voce, da un foglio bianco - nell'app <strong>Cedolino Facile</strong>: la trovi nella sezione Esercizi.</p>
-      
-        <div class="shelfc" style="--tn:#f3f0f8;--cp:#7B66A4;--et:#5a4a72;"><div class="shelfeti">Da ricordare</div><p>Il cedolino di Marco, riga per riga: dal lordo di 2.310,71 al netto in busta di 1.928,45.</p></div>
       </section>
 
       <!-- ===== CARD 16 · Il TFR ===== -->
@@ -872,8 +865,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
         <p class="t">Entro marzo, poi, il datore consegna a Marco la <strong>CU</strong> - la Certificazione Unica: il riassunto ufficiale di tutto l'anno. Reddito complessivo, contributi versati, IRPEF trattenuta, detrazioni riconosciute, giorni di lavoro: una pagina che fotografa dodici buste. La CU va conservata con cura, perché è la base della <strong>dichiarazione dei redditi</strong>.</p>
         <p class="t">Ed è qui che il lavoratore può recuperare quello che la busta non sa: le spese mediche, l'affitto degli studenti fuori sede, le spese di istruzione, il veterinario. Col <strong>modello 730</strong> - oggi in gran parte precompilato dall'Agenzia delle Entrate - queste spese diventano detrazioni, e spesso si trasformano in un <strong>rimborso</strong> che arriva direttamente in busta paga, a luglio. Il cerchio si chiude dove è cominciato: nel cedolino.</p>
         <p class="t">Alla dichiarazione dei redditi dedicheremo un intero modulo più avanti: per ora ti basta sapere che busta paga, CU e 730 sono <strong>tre capitoli della stessa storia</strong>.</p>
-      
-        <div class="shelfc" style="--tn:#f9efea;--cp:#AC6144;--et:#8a4a30;"><div class="shelfeti">Da ricordare</div><p>Per l'azienda il costo del lavoro non è il tuo lordo: sopra ci stanno i contributi del datore e il TFR che matura.</p></div>
       </section>
 
       <!-- ===== CARD 18 · Chiusura ===== -->
@@ -897,8 +888,6 @@ svg text.num, svg tspan.num{font-family:'Fraunces',Georgia,serif !important;font
           </div>
           <button onclick="goTab('ese')" style="display:inline-flex;align-items:center;gap:9px;background:#E65900;color:#fff;border:none;border-radius:12px;padding:13px 22px;font-family:'Schibsted Grotesk',sans-serif;font-size:14px;font-weight:600;cursor:pointer;"><i data-lucide="pencil" class="lucide"></i>Vai agli esercizi</button>
         </div>
-      
-        <div class="shelfc" style="--tn:#eef5f0;--cp:#5C8B73;--et:#3f6b52;"><div class="shelfeti">Da ricordare</div><p>La busta paga non si subisce: si legge, si controlla e - da oggi - si sa anche costruire.</p></div>
       </section>
 
       <!-- APPEND-LEZIONE -->
@@ -2079,7 +2068,24 @@ var rough=function(){"use strict";function t(t,e,s){if(t&&t.length){const[n,o]=e
     document.getElementById('video-ant').style.display = 'none';
     cor.style.display = 'block';
   }
-  if (videoDaFile) { document.getElementById('video-fascia').textContent = 'Apri il video su YouTube · 2 minuti'; }
+</script>
+
+<script>
+  // Il binario delle grafiche: ogni disegno largo viaggia su una corsia che scorre
+  // in orizzontale sui telefoni (la regola vale per tutte le grafiche, anche future).
+  (function () {
+    document.querySelectorAll('svg[viewBox]').forEach(function (svg) {
+      if (svg.parentElement && svg.parentElement.closest('svg')) return;      // icone interne
+      var vb = svg.viewBox && svg.viewBox.baseVal;
+      if (!vb || vb.width < 700) return;
+      var genitore = svg.parentElement;
+      if (!genitore || genitore.classList.contains('binario') || genitore.classList.contains('gf-tempo-scorri')) return;
+      var corsia = document.createElement('div');
+      corsia.className = 'binario';
+      genitore.insertBefore(corsia, svg);
+      corsia.appendChild(svg);
+    });
+  })();
 </script>
 </body>
 </html>
