@@ -209,6 +209,10 @@
   #sol-banner .sb-tag{ font-weight:700; letter-spacing:.02em; }
   #sol-banner .sb-btn{ margin-left:auto; background:#065f46; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; flex:none; }
   #sol-banner .sb-btn:hover{ background:#054b38; }
+/* La traccia delle scorciatoie (solo nella Valuta del docente) */
+.traccia-scorciatoie{ margin:16px 0 0; padding:12px 18px; border-radius:10px; background:#fdf6d3; border:1px solid #e6cf6e; color:#5b4a0e; font-size:14px; line-height:1.55; }
+.traccia-scorciatoie .ts-tit{ font-weight:700; margin-bottom:4px; }
+.traccia-scorciatoie ul{ margin:0; padding-left:18px; }
   /* ---- Visualizzatore compiti a schede (come l'export): Fattura / Fattura corretta / Dashboard / Dashboard corretta ---- */
   .vc-bar{ width:100%; max-width:1360px; margin:0 auto; }
   .vc-chips{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
@@ -637,6 +641,9 @@
 .cedolino .detr-corpo:not(:empty){padding:12px; border-top:1px solid var(--line); background:var(--ro); display:flex; flex-direction:column; gap:12px;}
 .cedolino .detr-alto{display:flex; flex-wrap:wrap; gap:18px; align-items:flex-end;}
 .cedolino .detr-spiega{margin:0; font-size:13.5px; color:var(--muted); flex:1 1 340px; max-width:60ch;}
+/* Quando la frase sta SOPRA le caselle (IRPEF netta, netto in busta) non deve allungarsi:
+   in una colonna flessibile quei 340px diventavano altezza vuota (collaudo del 14/09). */
+.cedolino .blocco-b > .detr-spiega{flex:0 0 auto;}
 .cedolino .detr-riga{display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;}
 .cedolino .campo-fascia{flex:1 1 100%; min-width:0;}
 .cedolino .campo-fascia .voce .cur{min-height:38px;}
@@ -701,6 +708,7 @@
 .cedolino .somma .v{color:var(--bp); font-variant-numeric:tabular-nums;}
 .cedolino .somma .l{display:block; font-family:var(--sans); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700;}
 .cedolino .chiusura .sp{margin-left:auto; display:flex; gap:9px;}
+.cedolino .chiusura .somma{display:none;} /* via il «Totale del foglio» (collaudo 14/09): nascosto anche nelle fotografie salvate prima */
 .cedolino .mini{font-size:12.5px; color:var(--muted);}
 .cedolino .pillw{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; border-radius:99px; padding:3px 10px; border:1px solid var(--warn-line); background:var(--warn-bg); color:var(--warn-ink);}
 
@@ -732,6 +740,7 @@
 #editor.sol-mode .cedolino .barra-conferma,
 #editor.sol-mode .cedolino .link-salta,
 #editor.sol-mode .cedolino .chiusura .sp,
+#editor.sol-mode .cedolino .mini,
 #editor.sol-mode .cedolino .vuoto{display:none !important;}
 #editor.sol-mode .cedolino .segno .cur,
 #editor.sol-mode .cedolino .voce .cur{pointer-events:none;}
@@ -906,7 +915,7 @@
 <div class="wrap" id="editor" style="display:none;">
   <div id="sol-banner">
     <span class="sb-tag">SOLUZIONE</span>
-    <span>Stai vedendo la soluzione corretta compilata nel compilatore, in sola lettura. Confrontala con la tua compilazione.</span>
+    <span>Stai vedendo i passaggi attesi della soluzione, in sola lettura. Confrontali con la tua compilazione.</span>
     <button type="button" class="sb-btn" id="btnSolEsci">Torna alla soluzione</button>
   </div>
   <div id="livello-bar" style="display:none;"><!-- per ora tutto Manuale (deciso da Mauro il 20/07) -->
@@ -935,7 +944,6 @@
         </div>
 
         <div class="chiusura">
-          <div class="somma"><span class="l">Totale del foglio</span><span class="v" id="ced-totale">0,00</span></div>
           <div class="sp">
             <button type="button" class="btn p" id="btn-fin" disabled>Finalizza il cedolino</button>
           </div>
@@ -1088,7 +1096,14 @@
   var toolbar = byId('toolbar');
 
   /* ---------- stato applicazione ---------- */
-  var PASSWORD_DOCENTE = "16031948";
+  var PASSWORD_DOCENTE_SHA256 = "f93f7bce1839975467c82675eb4321f3e157274501b0eb8335fe2a2108de526d"; // solo l'impronta: la password in chiaro non sta piu' nella pagina (14/09/2026)
+  function improntaTesto(s){
+    try{
+      return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(buf){
+        return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0' + b.toString(16)).slice(-2); }).join('');
+      });
+    }catch(e){ return Promise.reject(e); }
+  }
   var CLASSE = null;
   var FATTURE = [];
   var RUBRICA = [];
@@ -2863,7 +2878,7 @@
     });
     function count(){ return body.querySelectorAll('input[type=checkbox]:checked').length; }
     function flash(){
-      subEl.innerHTML = 'Selezionati <b>' + count() + '</b> di ' + MAX_FATTURE + '. Spunta i cedolini, scegli il livello di ciascuno; 👁 apre l’anteprima.';
+      subEl.innerHTML = 'Selezionati <b>' + count() + '</b> (al massimo ' + MAX_FATTURE + '). Spunta i cedolini da assegnare; l’occhio apre l’anteprima.';
     }
     flash();
     ov.querySelector('.modal-btn-cancel').addEventListener('click', function(){ closeModal(ov); });
@@ -5540,6 +5555,7 @@
         var a = leggiNumero(in1.value), b = leggiNumero(in2.value);
         var tot = (a === null) ? 0 : a;
         if(r._segno && b !== null) tot += b * r._segno;
+        if(tot < 0) tot = 0;   /* l'IRPEF non va mai sotto zero: le detrazioni in piu' si perdono (collaudo 14/09) */
         res.querySelector('[data-netta]').textContent = euro(tot);
         return tot;
       };
@@ -5991,10 +6007,11 @@
         });
         if(blR) blR.querySelectorAll('[data-riga]').forEach(function(x){ if(x._valore) retr += x._valore(); });
         var contr = 0;
-        ed.querySelectorAll('.riga-contributi').forEach(function(x){ if(x._valore) contr += x._valore(); });
+        var segnoC = 0;   /* il segno della striscia segue il bottone scelto, non il numero (collaudo 14/09) */
+        ed.querySelectorAll('.riga-contributi').forEach(function(x){ if(x._valore) contr += x._valore(); if(x._segno) segnoC = x._segno; });
         strisce.forEach(function(s){
           s.querySelector('[data-conto]').textContent = blR
-            ? euro(retr) + (contr < 0 ? ' − ' : ' + ') + euro(Math.abs(contr))
+            ? euro(retr) + (segnoC ? ((segnoC < 0 ? ' − ' : ' + ') + euro(Math.abs(contr))) : '')
             : 'manca la retribuzione: inseriscila per vedere il conto';
           s.querySelector('[data-fiscale]').textContent = euro(retr + contr);
         });
@@ -6130,9 +6147,18 @@
         var v = num0(contr.tot);
         if((contr.s === 1 || contr.s === -1) && v !== 0) d.voci.push({ n:'Contributi previdenziali', v:v, comp:contr.s === 1 });
       }
+      /* L'imponibile fiscale della bella copia e' quello della striscia verde dei contributi:
+         retribuzione e contributi coi segni scelti dall'alunno. Non e' un automatismo: se segni
+         o numeri sono sbagliati, resta sbagliato (deciso da Mauro nel collaudo del 14/09). */
+      if(contr){
+        var impF = 0;
+        if(retr){ (retr.sezioni || []).forEach(function(sz){ (sz.righe || []).forEach(function(r){ if(r.s === 1 || r.s === -1) impF += num0(r.v) * r.s; }); }); }
+        if(contr.s === 1 || contr.s === -1) impF += num0(contr.tot) * contr.s;
+        d.impFisc = euro(impF);
+      }
       var netto = datiBlocco(stato, 'netto');
       if(netto){
-        d.impFisc = netto.imp || '';
+        if(!contr) d.impFisc = netto.imp || '';   /* senza contributi resta la casella del netto */
         var nettoTot = num0(netto.imp);
         (netto.righe || []).forEach(function(r){
           var vv = num0(r.v);
@@ -6244,13 +6270,29 @@
       if(!silenzioso) show('editor');
     }
 
+    /* Le scorciatoie lette dallo stato salvato del foglio. Le vede SOLO il docente,
+       nella Valuta: mai l'alunno, mai il cedolino (collaudo del 14/09). */
+    function scorciatoieDaStato(stato){
+      var out = [];
+      ['add-reg', 'add-com'].forEach(function(id){
+        var dati = datiBlocco(stato, id); if(!dati) return;
+        var cfg = ADDIZIONALI[id];
+        if(dati.salta) out.push({ blocco:cfg.titolo, passaggio:'addizionale dell’anno', v:(dati.saltaV || '') });
+        (dati.der || []).forEach(function(dd, i){
+          if(dd && dd.salta && cfg.derivate[i]) out.push({ blocco:cfg.titolo, passaggio:cfg.derivate[i].nome, v:(dd.v || '') });
+        });
+      });
+      return out;
+    }
+
     return {
       attivo: function(){ return !!byIdC('ced-editor'); },
       wire: wire,
       raccogli: raccogliCed,
       cortesia: cortesiaCed,
       cortesiaSoluzione: cortesiaSoluzioneCed,
-      mostraSoluzione: mostraSoluzioneCed
+      mostraSoluzione: mostraSoluzioneCed,
+      scorciatoie: scorciatoieDaStato   /* per la traccia nella Valuta del docente */
     };
   })();
 
@@ -6416,6 +6458,21 @@
     sp.appendChild(esci); row.appendChild(sp); bar.appendChild(row);
     return bar;
   }
+  /* La traccia delle scorciatoie prese dall'alunno: riquadro giallo in fondo alla sua
+     dashboard, SOLO nella Valuta del docente (collaudo del 14/09). */
+  function tracciaScorciatoie(ed){
+    var st = ed.querySelector('#ced-stato'); if(!st || !CED.scorciatoie) return;
+    var stato = null; try{ stato = JSON.parse(st.getAttribute('data-stato') || 'null'); }catch(e){ return; }
+    var lista = CED.scorciatoie(stato);
+    if(!lista.length) return;
+    var box = document.createElement('div');
+    box.className = 'traccia-scorciatoie';
+    box.innerHTML = '<div class="ts-tit">Scorciatoie usate · le vedi solo tu</div><ul>' +
+      lista.map(function(s){ return '<li><b>' + esc(s.blocco) + '</b> · ' + esc(s.passaggio) + ': ' +
+        (s.v ? 'ha scritto direttamente ' + esc(s.v) : 'ha scelto la scorciatoia ma non ha scritto niente') + '</li>'; }).join('') + '</ul>';
+    var ced = ed.querySelector('.cedolino');
+    (ced || ed).appendChild(box);
+  }
   function vcGo(){
     var f = VC.fatture[VC.cf] || {};
     if(VC.ct === 4){ vcRenderValutazione(); window.scrollTo(0, 0); return; }
@@ -6436,6 +6493,7 @@
     } else {
       var ed = byId('editor');
       if(VC.ct === 2){ ed.innerHTML = f.nonSvolta ? (bannerNS + skelDash) : (f.dashboardAlunno || ''); }
+      if(VC.ct === 2 && !f.nonSvolta) tracciaScorciatoie(ed);
       else { ed.innerHTML = f.dashboardCorretta || ''; }
       ed.classList.add('sol-mode');
       var sb = byId('sol-banner');
@@ -7115,9 +7173,12 @@
   });
   byId('btn-entra-docente').addEventListener('click', function(){
     var p = (byId('in-pass').value||'');
-    if(p !== PASSWORD_DOCENTE){ byId('err-docente').textContent = 'Password errata.'; return; }
-    try{ sessionStorage.setItem('cf_docente_attivo', '1'); }catch(e){} // dopo un refresh resta nella dashboard (niente password di nuovo)
-    renderDocente(); show('docente'); startCollegatiTimer();
+    // La password non sta scritta nella pagina: si confronta la sua impronta SHA-256 (14/09/2026).
+    improntaTesto(p).then(function(h){
+      if(h !== PASSWORD_DOCENTE_SHA256){ byId('err-docente').textContent = 'Password errata.'; return; }
+      try{ sessionStorage.setItem('cf_docente_attivo', '1'); }catch(e){} // dopo un refresh resta nella dashboard (niente password di nuovo)
+      renderDocente(); show('docente'); startCollegatiTimer();
+    }, function(){ byId('err-docente').textContent = 'Questo browser non riesce a controllare la password.'; });
   });
 
   byId('btn-sospendi').addEventListener('click', function(){
