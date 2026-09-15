@@ -753,43 +753,60 @@
 #editor.sol-mode .cedolino .voce .cur{pointer-events:none;}
 #editor.sol-mode .cedolino .segno .cur.manca{animation:none;}
 
-/* ---- il cedolino finale: griglia squadrata, tutte linee piene ----
+/* ---- il cedolino finale, il PROSPETTO PAGA (rifatto il 15/09/2026 sul mockup approvato da Mauro):
+   una parte generale (le voci, la retribuzione lorda, l'imponibile fiscale, il netto) e i dati di
+   dettaglio, come nel suo cedolino NoiPA. Niente codici, niente conti a vista, linee sempre piene.
    Vive dentro la copia di cortesia e nei file esportati: niente scudo. */
-.ced-sheet{background:#fff; color:#1c1c1a; width:100%; max-width:880px; margin:0 auto; border:1px solid #2f2f2a; padding:22px;}
-.ced-l{display:block; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#63635c; font-weight:700; margin-bottom:3px;}
-.ced-v{font-size:14px;}
-.ced-int{display:grid; grid-template-columns:1fr auto; border:1px solid #2f2f2a;}
-.ced-int > div{padding:10px 12px; min-width:0;}
-.ced-int > div + div{border-left:1px solid #2f2f2a;}
-.ced-dip{display:grid; grid-template-columns:1.8fr 1.4fr .7fr 1.4fr; border:1px solid #2f2f2a; border-top:none;}
-.ced-dip > div{padding:9px 12px; border-left:1px solid #2f2f2a; min-width:0;}
-.ced-dip > div:first-child{border-left:none;}
-.ced-corpo{width:100%; border-collapse:collapse; border:1px solid #2f2f2a; border-top:none; font-size:13.5px;}
-.ced-corpo th{background:#efeee8; font-size:10px; text-transform:uppercase; letter-spacing:.07em; text-align:left; padding:7px 12px; border-bottom:1px solid #2f2f2a; font-weight:700; color:#3c3c36;}
-.ced-corpo th.n, .ced-corpo td.n{text-align:right; font-variant-numeric:tabular-nums;}
-.ced-corpo th + th, .ced-corpo td + td{border-left:1px solid #2f2f2a; width:132px;}
-.ced-corpo td{padding:6px 12px; border-bottom:1px solid #e3e2da;}
-.ced-corpo tr:last-child td{border-bottom:none;}
-.ced-fascia{display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #2f2f2a; border-top:none; background:#efeee8;}
-.ced-fascia > div{padding:8px 12px; border-left:1px solid #2f2f2a; min-width:0;}
-.ced-fascia > div:first-child{border-left:none;}
-.ced-fascia .ced-v{font-variant-numeric:tabular-nums;}
-.ced-fondo{display:grid; grid-template-columns:1fr 1fr 1.25fr; border:1px solid #2f2f2a; border-top:none;}
-.ced-fondo > div{padding:10px 12px; border-left:1px solid #2f2f2a;}
-.ced-fondo > div:first-child{border-left:none;}
-.ced-fondo .ced-v{display:block; text-align:right; font-variant-numeric:tabular-nums; font-size:15.5px;}
+.ced-sheet{background:#fff; color:#1c1c1a; width:100%; max-width:960px; margin:0 auto; border:1px solid #2f2f2a; padding:18px;
+  font-family:'Schibsted Grotesk', Arial, 'Segoe UI', sans-serif; font-size:13.5px; line-height:1.4;}
+.ced-l{display:block; font-size:9px; letter-spacing:.07em; text-transform:uppercase; color:#5f5f58; font-weight:700; margin-bottom:3px;}
+.ced-v{display:block; font-size:13.5px; font-weight:500; min-height:1.4em;}
+.ced-v.n{text-align:right; font-variant-numeric:tabular-nums;}
+.ced-titolo{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;
+  border:1px solid #2f2f2a; border-bottom:none; background:#efeee8; padding:7px 9px;}
+.ced-titolo b{font-size:13px; letter-spacing:.12em; text-transform:uppercase;}
+.ced-titolo span{font-size:11px; color:#5f5f58;}
+.ced-griglia{display:grid; border:1px solid #2f2f2a;}
+.ced-griglia + .ced-griglia, .ced-griglia.ced-sotto{border-top:none;}
+.ced-griglia > div{padding:6px 9px; border-left:1px solid #2f2f2a; min-width:0;}
+.ced-griglia > div:first-child{border-left:none;}
+.ced-az{grid-template-columns:2fr 1fr 1.2fr;}
+.ced-dip{grid-template-columns:1.6fr 1.5fr .6fr 1.5fr;}
+.ced-fascia-t{border:1px solid #2f2f2a; border-top:none; background:#efeee8; padding:4px 9px;
+  font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:#3c3c36;}
+.ced-tot{background:#efeee8;}
+.ced-scroll{overflow-x:auto; margin-top:10px;}
+.ced-corpo{width:100%; border-collapse:collapse; border:1px solid #2f2f2a; min-width:560px; font-size:13.5px;}
+.ced-corpo th{background:#efeee8; font-size:9px; letter-spacing:.07em; text-transform:uppercase; color:#5f5f58; font-weight:700;
+  text-align:left; padding:6px 9px; border-bottom:1px solid #2f2f2a;}
+.ced-corpo td{padding:5px 9px; border-bottom:1px solid #d9d8cf; vertical-align:top;}
+.ced-corpo th + th, .ced-corpo td + td{border-left:1px solid #2f2f2a;}
+.ced-corpo .n{width:108px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.ced-corpo .a{width:72px;}
+.ced-corpo .ced-nr{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.ced-corpo tr.ced-gruppo td{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:#3c3c36;
+  background:#f8f7f3; padding:4px 9px;}
+.ced-corpo tr.ced-subtot td{font-weight:700; background:#efeee8; border-top:1px solid #2f2f2a; border-bottom:1px solid #2f2f2a;}
+.ced-corpo .ced-spiega{font-weight:400; color:#5f5f58; font-size:12px;}
+.ced-corpo tr.ced-netto-riga td{font-weight:700; background:#efeee8; border-top:1px solid #2f2f2a; border-bottom:none;}
+.ced-dettaglio{margin-top:10px;}
+.ced-dettaglio .ced-fascia-t.primo{border-top:1px solid #2f2f2a;}
+.ced-fondo{grid-template-columns:1fr 1fr 1.3fr; margin-top:10px;}
 .ced-netto{background:#efeee8;}
-.ced-netto .ced-v{font-size:20px; font-weight:700;}
+.ced-netto .ced-l{color:#1c1c1a;}
+.ced-netto .ced-v{font-size:22px; font-weight:700;}
 .ced-sol-tab{width:100%; max-width:640px; border-collapse:collapse; font-size:14px; margin-top:10px;}
 .ced-sol-tab td{padding:7px 12px; border:1px solid #2f2f2a;}
 .ced-sol-tab td.n{text-align:right; font-variant-numeric:tabular-nums;}
 .ced-sol-tab tr.netto td{background:#efeee8; font-weight:700;}
 @media (max-width:640px){
-  .ced-sheet{padding:14px;}
-  .ced-dip, .ced-fascia{grid-template-columns:1fr 1fr;}
-  .ced-dip > div, .ced-fascia > div{border-top:1px solid #e3e2da;}
-  .ced-fondo{grid-template-columns:1fr;}
-  .ced-fondo > div{border-left:none; border-top:1px solid #2f2f2a;}
+  .ced-sheet{padding:12px;}
+  .ced-griglia{grid-template-columns:1fr 1fr !important;}
+  .ced-griglia > div{border-left:none; border-top:1px solid #d9d8cf;}
+  .ced-griglia > div:nth-child(-n+2){border-top:none;}
+  .ced-griglia > div:nth-child(even){border-left:1px solid #2f2f2a;}
+  .ced-fondo{grid-template-columns:1fr !important;}
+  .ced-fondo > div{border-left:none !important; border-top:1px solid #2f2f2a;}
   .ced-fondo > div:first-child{border-top:none;}
 }
 </style>
@@ -6098,101 +6115,166 @@
       if(m) annua += m.importo;
       return annua / 12;
     }
+    /* Tutto quello che serve al prospetto, letto dallo stato del foglio. Mostra SOLO quello che
+       l'alunno ha scritto, giusto o sbagliato che sia: l'app somma e basta. Il segno decide la
+       colonna (+ competenze, − trattenute). */
     function contiDaStato(stato){
-      var d = { voci:[], totC:0, totT:0, netto:null, lorda:null, detr:null, impPrev:'', impFisc:'', az:{}, dip:{} };
+      var d = { retr:[], fisse:[], lorda:null, contr:null, impFisc:null, fiscali:[], integr:[], netto:null,
+                irpefLorda:null, detr:null, detrVoci:{}, irpefNetta:null, addReg:null, addCom:null,
+                totC:0, totT:0, az:{}, dip:{} };
+      function conta(r){ if(r.s === 1) d.totC += r.v; else d.totT += r.v; }
+
       var retr = datiBlocco(stato, 'retr');
-      if(retr){ (retr.sezioni || []).forEach(function(sz){
-        (sz.righe || []).forEach(function(r){
-          var v = num0(r.v);
-          if(r.n && (r.s === 1 || r.s === -1) && v !== 0) d.voci.push({ n:r.n, v:v, comp:r.s === 1 });
+      if(retr){
+        var lorda = 0, quante = 0;
+        (retr.sezioni || []).forEach(function(sz){
+          (sz.righe || []).forEach(function(r){
+            var v = num0(r.v);
+            if(!r.n || !(r.s === 1 || r.s === -1) || v === 0) return;
+            var riga = { n:r.n, v:v, s:r.s };
+            d.retr.push(riga); conta(riga); lorda += v * r.s; quante++;
+            if(sz.id === 'fisse' && r.s === 1) d.fisse.push(riga);
+          });
         });
-      }); }
+        if(quante) d.lorda = lorda;
+      }
+
       var contr = datiBlocco(stato, 'contr');
       if(contr){
-        d.impPrev = contr.imp || '';
-        var v = num0(contr.tot);
-        if((contr.s === 1 || contr.s === -1) && v !== 0) d.voci.push({ n:'Contributi previdenziali', v:v, comp:contr.s === 1 });
+        var vc = num0(contr.tot);
+        d.contr = { imp:contr.imp || '', ali:contr.ali || '', tot:contr.tot || '', riga:null };
+        if((contr.s === 1 || contr.s === -1) && vc !== 0){ d.contr.riga = { v:vc, s:contr.s }; conta(d.contr.riga); }
+        /* l'imponibile fiscale e' quello della striscia verde: retribuzione e contributi coi segni
+           dell'alunno (collaudo del 14/09) */
+        d.impFisc = (d.lorda || 0) + ((contr.s === 1 || contr.s === -1) ? vc * contr.s : 0);
       }
-      /* L'imponibile fiscale della bella copia e' quello della striscia verde dei contributi:
-         retribuzione e contributi coi segni scelti dall'alunno. Non e' un automatismo: se segni
-         o numeri sono sbagliati, resta sbagliato (deciso da Mauro nel collaudo del 14/09). */
-      if(contr){
-        var impF = 0;
-        if(retr){ (retr.sezioni || []).forEach(function(sz){ (sz.righe || []).forEach(function(r){ if(r.s === 1 || r.s === -1) impF += num0(r.v) * r.s; }); }); }
-        if(contr.s === 1 || contr.s === -1) impF += num0(contr.tot) * contr.s;
-        d.impFisc = euro(impF);
-      }
+
+      var NOMI = { 'Addizionale regionale':'Addizionale regionale IRPEF', 'Addizionale comunale':'Addizionale comunale IRPEF' };
       var netto = datiBlocco(stato, 'netto');
       if(netto){
-        if(!contr) d.impFisc = netto.imp || '';   /* senza contributi resta la casella del netto */
         var nettoTot = num0(netto.imp);
+        if(d.impFisc === null && netto.imp) d.impFisc = num0(netto.imp);   /* senza contributi vale la casella del netto */
         (netto.righe || []).forEach(function(r){
           var vv = num0(r.v);
-          if(r.s === 1 || r.s === -1){
-            nettoTot += vv * r.s;
-            if(r.n && vv !== 0) d.voci.push({ n:r.n, v:vv, comp:r.s === 1 });
-          }
+          if(!(r.s === 1 || r.s === -1)) return;
+          nettoTot += vv * r.s;
+          if(!r.n || vv === 0) return;
+          var riga = { n:(NOMI[r.n] || r.n), v:vv, s:r.s };
+          if(r.n.indexOf('Somma integrativa') === 0) d.integr.push(riga); else d.fiscali.push(riga);
+          conta(riga);
+          if(r.n === 'IRPEF netta' && d.irpefNetta === null) d.irpefNetta = vv;
+          if(r.n === 'Addizionale regionale') d.addReg = vv;
+          if(r.n === 'Addizionale comunale') d.addCom = vv;
         });
         d.netto = nettoTot;
       }
-      var lorda = datiBlocco(stato, 'irpef-l');
-      if(lorda){
+
+      var lordaIrpef = datiBlocco(stato, 'irpef-l');
+      if(lordaIrpef){
         var t = 0;
-        (lorda.sc || []).forEach(function(coppia){ t += num0(coppia[1]); });
-        d.lorda = t;
+        (lordaIrpef.sc || []).forEach(function(coppia){ t += num0(coppia[1]); });
+        d.irpefLorda = t;
       }
       var detr = datiBlocco(stato, 'detr');
       if(detr){
         var td = 0;
-        (detr.righe || []).forEach(function(rr){ td += meseRigaScelta(rr, detr.reddito); });
+        (detr.righe || []).forEach(function(rr){
+          var m = meseRigaScelta(rr, detr.reddito);
+          td += m;
+          if(detr.conf && rr && rr.scheda) d.detrVoci[rr.scheda] = (d.detrVoci[rr.scheda] || 0) + m;
+        });
         d.detr = detr.conf ? td : 0;
       }
+      /* l'IRPEF netta dei dati fiscali e' quella del suo blocco; se manca, quella scritta nel netto */
+      var netta = datiBlocco(stato, 'irpef-n');
+      if(netta){
+        var tn = num0(netta.v1);
+        if(netta.s === 1 || netta.s === -1) tn += num0(netta.v2) * netta.s;
+        d.irpefNetta = tn < 0 ? 0 : tn;
+      }
+
       var az = datiBlocco(stato, 'az'); if(az && az.campi) d.az = az.campi;
       var dip = datiBlocco(stato, 'dip'); if(dip && dip.campi) d.dip = dip.campi;
-      d.voci.forEach(function(v){ if(v.comp) d.totC += v.v; else d.totT += v.v; });
       return d;
     }
 
-    /* ---------- il CEDOLINO FINALE (la bella copia) ----------
-       Griglia squadrata stile gestionale, fasce, netto in fondo a destra,
-       NIENTE logo ne' sigle. Mostra SOLO quello che l'alunno ha scritto,
-       giusto o sbagliato che sia: l'unico calcolo dell'app e' la somma
-       delle colonne. Il segno decide la colonna: + competenze, − trattenute. */
+    /* ---------- il CEDOLINO FINALE: il PROSPETTO PAGA (15/09/2026) ----------
+       Rifatto sul mockup approvato da Mauro: in alto la parte generale (voci a gruppi, la riga
+       della retribuzione lorda, l'imponibile fiscale spiegato a parole, il netto), sotto i dati
+       di dettaglio (previdenziali, fiscali, detrazioni) e il fondo col netto in grande.
+       Niente codici e niente conti a vista: in un cedolino vero non ci sono. */
     function cortesiaCed(stato){
       var d = contiDaStato(stato || { ordine:[] });
-      var corpo = d.voci.map(function(v){
-        return '<tr><td>' + escC(v.n) + '</td>' +
-               '<td class="n">' + (v.comp ? euro(v.v) : '') + '</td>' +
-               '<td class="n">' + (v.comp ? '' : euro(v.v)) + '</td></tr>';
-      }).join('');
-      if(!corpo) corpo = '<tr><td colspan="3">Nessuna voce compilata</td></tr>';
+      function E(x){ return (x === null || x === undefined) ? '' : euro(x); }
+      function M(x){ return escC(String(x || '').toUpperCase()); }
+      function cella(l, v, cl){ return '<div' + (cl ? ' class="' + cl + '"' : '') + '><span class="ced-l">' + l + '</span><span class="ced-v n">' + v + '</span></div>'; }
+      function cellaT(l, v){ return '<div><span class="ced-l">' + l + '</span><span class="ced-v">' + v + '</span></div>'; }
+      function gruppo(t){ return '<tr class="ced-gruppo"><td colspan="5">' + t + '</td></tr>'; }
+      function riga(n, imp, ali, r){
+        return '<tr><td>' + escC(n) + '</td><td class="n">' + imp + '</td><td class="n a">' + ali + '</td>' +
+               '<td class="n">' + (r && r.s === 1 ? euro(r.v) : '') + '</td><td class="n">' + (r && r.s === -1 ? euro(r.v) : '') + '</td></tr>';
+      }
       var periodo = ((d.dip['Mese del cedolino'] || '') + ' ' + (d.dip['Anno del cedolino'] || '')).trim();
+
+      var elem = '';
+      if(d.fisse.length){
+        var tf = 0; d.fisse.forEach(function(r){ tf += r.v; });
+        elem = '<div class="ced-fascia-t">Elementi della retribuzione</div>' +
+               '<div class="ced-griglia ced-sotto" style="grid-template-columns:repeat(' + (d.fisse.length + 1) + ',1fr);">' +
+               d.fisse.map(function(r){ return cella(escC(r.n), euro(r.v)); }).join('') + cella('Totale', euro(tf), 'ced-tot') + '</div>';
+      }
+
+      var corpo = '';
+      if(d.retr.length){
+        corpo += gruppo('Competenze');
+        d.retr.forEach(function(r){ corpo += riga(r.n, '', '', r); });
+        corpo += '<tr class="ced-subtot"><td>Retribuzione lorda</td><td class="n"></td><td class="n a"></td><td class="n">' + E(d.lorda) + '</td><td class="n"></td></tr>';
+      }
+      if(d.contr && d.contr.riga){
+        corpo += gruppo('Ritenute previdenziali');
+        corpo += riga('Contributi previdenziali INPS', escC(d.contr.imp), d.contr.ali ? escC(d.contr.ali) + ' %' : '', d.contr.riga);
+      }
+      if(d.impFisc !== null){
+        corpo += '<tr class="ced-subtot"><td>Imponibile fiscale <span class="ced-spiega">(retribuzione lorda meno contributi previdenziali)</span></td>' +
+                 '<td class="n">' + E(d.impFisc) + '</td><td class="n a"></td><td class="n"></td><td class="n"></td></tr>';
+      }
+      if(d.fiscali.length){ corpo += gruppo('Ritenute fiscali'); d.fiscali.forEach(function(r){ corpo += riga(r.n, '', '', r); }); }
+      if(d.integr.length){ corpo += gruppo('Voci integrative (non tassate)'); d.integr.forEach(function(r){ corpo += riga(r.n, '', '', r); }); }
+      if(!corpo) corpo = '<tr><td colspan="5">Nessuna voce compilata</td></tr>';
+      corpo += '<tr class="ced-netto-riga"><td>Netto del mese</td><td class="ced-nr" colspan="4">' + E(d.netto) + '</td></tr>';
+
+      var dv = d.detrVoci;
+      var dett = '<div class="ced-dettaglio">' +
+        '<div class="ced-titolo"><b>Dati di dettaglio</b></div>' +
+        '<div class="ced-fascia-t primo">Dati previdenziali</div>' +
+        '<div class="ced-griglia ced-sotto" style="grid-template-columns:repeat(3,1fr);">' +
+          cella('Imponibile previdenziale', d.contr ? escC(d.contr.imp) : '') +
+          cella('Aliquota a carico dipendente', (d.contr && d.contr.ali) ? escC(d.contr.ali) + ' %' : '') +
+          cella('Contributi a carico dipendente', d.contr ? escC(d.contr.tot) : '') +
+        '</div>' +
+        '<div class="ced-fascia-t">Dati fiscali</div>' +
+        '<div class="ced-griglia ced-sotto" style="grid-template-columns:repeat(6,1fr);">' +
+          cella('Imponibile fiscale', E(d.impFisc)) + cella('IRPEF lorda', E(d.irpefLorda)) + cella('Detrazioni', E(d.detr)) +
+          cella('IRPEF netta', E(d.irpefNetta)) + cella('Addizionale regionale', E(d.addReg)) + cella('Addizionale comunale', E(d.addCom)) +
+        '</div>' +
+        '<div class="ced-fascia-t">Dettaglio detrazioni</div>' +
+        '<div class="ced-griglia ced-sotto" style="grid-template-columns:repeat(6,1fr);">' +
+          cella('Lavoro dipendente', E(dv.lavoro)) + cella('Coniuge a carico', E(dv.coniuge)) + cella('Figli a carico', E(dv.figli)) +
+          cella('Altri familiari', E(dv.altri)) + cella('Ulteriore detrazione', E(dv.cuneo)) + cella('Totale', E(d.detr)) +
+        '</div>' +
+      '</div>';
+
       return '' +
         '<div class="ced-sheet">' +
-          '<div class="ced-int">' +
-            '<div><span class="ced-l">Azienda</span><span class="ced-v">' + escC(d.az['Ragione sociale'] || '') + '</span>' +
-            '<span class="ced-v" style="display:block;">' + escC(d.az['Comune'] || '') + '</span></div>' +
-            '<div><span class="ced-l">Periodo di paga</span><span class="ced-v">' + escC(periodo) + '</span></div>' +
-          '</div>' +
-          '<div class="ced-dip">' +
-            '<div><span class="ced-l">Dipendente</span><span class="ced-v">' + escC(d.dip['Cognome e nome'] || '') + '</span></div>' +
-            '<div><span class="ced-l">Qualifica</span><span class="ced-v">' + escC(d.dip['Qualifica'] || '') + '</span></div>' +
-            '<div><span class="ced-l">Livello</span><span class="ced-v">' + escC(d.dip['Livello'] || '') + '</span></div>' +
-            '<div><span class="ced-l">CCNL applicato</span><span class="ced-v">' + escC(d.dip['CCNL applicato'] || '') + '</span></div>' +
-          '</div>' +
-          '<table class="ced-corpo"><thead><tr><th>Voce</th><th class="n">Competenze</th><th class="n">Trattenute</th></tr></thead>' +
-          '<tbody>' + corpo + '</tbody></table>' +
-          '<div class="ced-fascia">' +
-            '<div><span class="ced-l">Imponibile previdenziale</span><span class="ced-v">' + escC(d.impPrev) + '</span></div>' +
-            '<div><span class="ced-l">Imponibile fiscale</span><span class="ced-v">' + escC(d.impFisc) + '</span></div>' +
-            '<div><span class="ced-l">IRPEF lorda</span><span class="ced-v">' + (d.lorda !== null ? euro(d.lorda) : '') + '</span></div>' +
-            '<div><span class="ced-l">Detrazioni</span><span class="ced-v">' + (d.detr !== null ? euro(d.detr) : '') + '</span></div>' +
-          '</div>' +
-          '<div class="ced-fondo">' +
-            '<div><span class="ced-l">Totale competenze</span><span class="ced-v">' + euro(d.totC) + '</span></div>' +
-            '<div><span class="ced-l">Totale trattenute</span><span class="ced-v">' + euro(d.totT) + '</span></div>' +
-            '<div class="ced-netto"><span class="ced-l">Netto in busta</span><span class="ced-v">' + (d.netto !== null ? euro(d.netto) : '') + '</span></div>' +
-          '</div>' +
+          '<div class="ced-titolo"><b>Prospetto paga</b><span>Libro unico del lavoro</span></div>' +
+          '<div class="ced-griglia ced-az">' + cellaT('Azienda', M(d.az['Ragione sociale'])) + cellaT('Sede', M(d.az['Comune'])) + cellaT('Periodo di retribuzione', M(periodo)) + '</div>' +
+          '<div class="ced-griglia ced-dip">' + cellaT('Cognome e nome', M(d.dip['Cognome e nome'])) + cellaT('Qualifica', M(d.dip['Qualifica'])) +
+            cellaT('Livello', M(d.dip['Livello'])) + cellaT('CCNL applicato', M(d.dip['CCNL applicato'])) + '</div>' +
+          elem +
+          '<div class="ced-scroll"><table class="ced-corpo"><thead><tr><th>Descrizione</th><th class="n">Imponibile</th><th class="n a">Aliquota</th>' +
+            '<th class="n">Competenze</th><th class="n">Trattenute</th></tr></thead><tbody>' + corpo + '</tbody></table></div>' +
+          dett +
+          '<div class="ced-griglia ced-fondo">' + cella('Totale competenze', euro(d.totC)) + cella('Totale trattenute', euro(d.totT)) + cella('Netto del mese', E(d.netto), 'ced-netto') + '</div>' +
         '</div>';
     }
 
