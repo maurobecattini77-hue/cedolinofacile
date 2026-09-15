@@ -572,9 +572,12 @@
 .cedolino .segno>.cur{width:42px; height:38px; border:1px solid var(--line2); border-radius:9px; background:var(--surface); color:var(--muted); font-size:19px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center;}
 .cedolino .segno>.cur.p{color:var(--plus); background:var(--plus-bg); border-color:var(--plus);}
 .cedolino .segno>.cur.m{color:var(--minus); background:var(--minus-bg); border-color:var(--minus);}
+.cedolino .segno>.cur.manca{color:var(--minus); border-color:var(--minus); animation:manca-segno 1.4s ease-in-out infinite;}
+@keyframes manca-segno{50%{box-shadow:0 0 0 4px var(--minus-bg);}}
 .cedolino .segno>.cur.richiamo{animation:richiamo-segno .45s ease 3;}
 @keyframes richiamo-segno{50%{color:var(--minus); border-color:var(--minus); box-shadow:0 0 0 4px var(--minus-bg); transform:scale(1.1);}}
 .cedolino .imp input.attende-segno{opacity:.5; cursor:not-allowed;}
+.cedolino .avviso-segni{color:var(--minus); font-weight:600; font-size:14px;}
 .cedolino .scelte{position:fixed; z-index:400; top:0; left:0; background:var(--surface); border:1px solid var(--line2); border-radius:11px; box-shadow:0 14px 34px -14px rgba(0,0,0,.5); padding:5px; display:flex; flex-direction:column; gap:4px; min-width:210px;}
 .cedolino .scelte[hidden]{display:none;}
 .cedolino .scelte button{display:flex; align-items:center; gap:9px; border:none; background:transparent; border-radius:8px; padding:7px 9px; text-align:left; color:var(--ink); font-size:13.5px;}
@@ -744,9 +747,11 @@
 #editor.sol-mode .cedolino .link-salta,
 #editor.sol-mode .cedolino .chiusura .sp,
 #editor.sol-mode .cedolino .mini,
+#editor.sol-mode .cedolino .avviso-segni,
 #editor.sol-mode .cedolino .vuoto{display:none !important;}
 #editor.sol-mode .cedolino .segno .cur,
 #editor.sol-mode .cedolino .voce .cur{pointer-events:none;}
+#editor.sol-mode .cedolino .segno .cur.manca{animation:none;}
 
 /* ---- il cedolino finale: griglia squadrata, tutte linee piene ----
    Vive dentro la copia di cortesia e nei file esportati: niente scudo. */
@@ -947,6 +952,7 @@
         </div>
 
         <div class="chiusura">
+          <span class="avviso-segni" id="ced-avviso-segni" hidden></span>
           <div class="sp">
             <button type="button" class="btn p" id="btn-fin" disabled>Finalizza il cedolino</button>
           </div>
@@ -4685,7 +4691,7 @@
       {n:'Addizionale comunale'},
       {n:'Addizionale regionale'},
       {n:'IRPEF netta'},
-      {n:'Voci integrative'}
+      {n:'Somma integrativa (taglio del cuneo fiscale)'}
     ];
     var ANAGRAFICHE = {
       az:  {titolo:'Anagrafica azienda', campi:[{l:'Ragione sociale', larga:true},{l:'Comune'}]},
@@ -4844,12 +4850,27 @@
     /* Il segno prima di tutto (collaudo del 15/09: se l'e' scordato perfino il prof).
        Finche' la riga non ha il segno, i suoi importi restano chiusi e, se ci si clicca
        sopra, il ± lampeggia. Non suggerisce QUALE segno: obbliga solo a sceglierlo. */
+    function lampeggia(cur){
+      cur.classList.remove('richiamo');
+      void cur.offsetWidth;   /* riparte l'animazione anche se era gia' partita */
+      cur.classList.add('richiamo');
+      clearTimeout(cur._spegni);
+      cur._spegni = setTimeout(function(){ cur.classList.remove('richiamo'); }, 1400);
+    }
+    /* Prima di aggiungere qualsiasi cosa: se c'e' una voce senza segno si torna li', non si va avanti. */
+    function segnoMancante(){
+      var bh = blocchiEl(); if(!bh) return false;
+      var prima = null;
+      bh.querySelectorAll('[data-riga]').forEach(function(r){ if(!prima && r._senzaSegno && r._senzaSegno()) prima = r; });
+      if(!prima) return false;
+      var cur = prima._curSegno;
+      (cur || prima).scrollIntoView({block:'center', behavior:'smooth'});
+      if(cur) lampeggia(cur);
+      return true;
+    }
     function primaIlSegno(r, sg, caselle){
-      function richiama(){
-        sg.cur.classList.remove('richiamo');
-        void sg.cur.offsetWidth;   /* riparte l'animazione anche se era gia' partita */
-        sg.cur.classList.add('richiamo');
-      }
+      r._curSegno = sg.cur;
+      function richiama(){ lampeggia(sg.cur); }
       function stato(){
         caselle.forEach(function(i){
           i.readOnly = !r._segno;
@@ -4918,7 +4939,7 @@
         else r.parentNode.insertBefore(nuova, r.nextSibling);
         aggiorna();
       });
-      bpiu.addEventListener('click', function(){ apri(bpiu, mpiu); });
+      bpiu.addEventListener('click', function(){ if(segnoMancante()) return; apri(bpiu, mpiu); });
       mw.appendChild(bpiu);
 
       var bdel = document.createElement('button');
@@ -4938,7 +4959,7 @@
         var n = leggiNumero(inp.value);
         return n === null ? 0 : n * r._segno;
       };
-      r._senzaSegno = function(){ return !r._segno; };
+      r._senzaSegno = function(){ return !r._segno && !!r._nome; };
       r._leggi = function(){ return { s:(r._segno || 0), n:(r._nome || null), v:inp.value }; };
 
       if(init){
@@ -4972,7 +4993,7 @@
       var piu = document.createElement('button');
       piu.type='button'; piu.className='piu';
       piu.innerHTML = '＋ Aggiungi una riga';
-      piu.addEventListener('click', function(){ corpo.insertBefore(creaRiga(cfg), piu); aggiorna(); });
+      piu.addEventListener('click', function(){ if(segnoMancante()) return; corpo.insertBefore(creaRiga(cfg), piu); aggiorna(); });
 
       if(initRighe){ initRighe.forEach(function(ir){ corpo.appendChild(creaRiga(cfg, ir)); }); }
       else { corpo.appendChild(creaRiga(cfg)); }
@@ -5466,6 +5487,7 @@
       var piu = document.createElement('button');
       piu.type='button'; piu.className='piu'; piu.innerHTML=lblPiu;
       piu.addEventListener('click', function(){
+        if(segnoMancante()) return;
         elenco.appendChild(creaRigaScelta(scuoti, vociMenu, titoloMenu));
         aggiorna();
       });
@@ -5581,7 +5603,7 @@
         res.querySelector('[data-netta]').textContent = euro(tot);
         return tot;
       };
-      r._senzaSegno = function(){ return false; };
+      r._senzaSegno = function(){ return !r._segno; };
       corpo.appendChild(r);
 
       if(init){
@@ -5655,7 +5677,7 @@
         var n = leggiNumero(inp.value);
         return n === null ? 0 : n * r._segno;
       };
-      r._senzaSegno = function(){ return !r._segno; };
+      r._senzaSegno = function(){ return !r._segno && !!r._nome; };
       r._leggi = function(){ return { s:(r._segno || 0), n:(r._nome || null), v:inp.value }; };
 
       if(init){
@@ -5714,7 +5736,7 @@
       mw.className = 'mwrap';
       var piu = document.createElement('button');
       piu.type='button'; piu.className='piu'; piu.innerHTML='＋ Aggiungi una voce';
-      piu.addEventListener('click', function(){ elenco.appendChild(creaRigaNetto()); aggiorna(); });
+      piu.addEventListener('click', function(){ if(segnoMancante()) return; elenco.appendChild(creaRigaNetto()); aggiorna(); });
       mw.appendChild(piu);
 
       if(init && init.righe){ init.righe.forEach(function(ir){ elenco.appendChild(creaRigaNetto(ir)); }); }
@@ -5889,19 +5911,25 @@
       righe.forEach(function(r){
         if(!r._valore) return;
         if(r._nelFoglio !== false) tot += r._valore();   /* i passaggi intermedi non sono trattenute */
-        if(r._senzaSegno && r._senzaSegno()) senzaSegno++;
+        var manca = !!(r._senzaSegno && r._senzaSegno());
+        if(manca) senzaSegno++;
+        if(r._curSegno) r._curSegno.classList.toggle('manca', manca);
         if(r._valore() !== 0) conImporto++;
       });
       var elTot = byIdC('ced-totale'); if(elTot) elTot.textContent = euro(tot);
       var vuoto = byIdC('ced-vuoto'); if(vuoto) vuoto.style.display = ed.querySelector('.blocco') ? 'none' : '';
 
-      /* qui compare solo quello che serve davvero: l'avviso dei segni mancanti */
-      var st = byIdC('ced-stato-testo');
-      if(st){
-        if(senzaSegno > 0) st.innerHTML = '<span class="pillw">⚠ ' + senzaSegno + (senzaSegno === 1 ? ' voce senza segno' : ' voci senza segno') + '</span>';
-        else st.textContent = '';
+      /* I segni mancanti (collaudo 15/09): l'avviso in alto nessuno lo vedeva. Adesso il ± delle
+         voci senza segno pulsa in rosso, l'avviso sta accanto a «Finalizza», e finche' manca
+         un segno non si finalizza e non si aggiunge niente (segnoMancante). */
+      var st = byIdC('ced-stato-testo'); if(st) st.textContent = '';
+      var av = byIdC('ced-avviso-segni');
+      if(av){
+        av.hidden = senzaSegno === 0;
+        av.textContent = (senzaSegno === 1) ? 'Manca il segno in una voce: sceglilo per andare avanti.'
+                                            : 'Manca il segno in ' + senzaSegno + ' voci: sceglilo per andare avanti.';
       }
-      var fin = byIdC('btn-fin'); if(fin) fin.disabled = conImporto === 0;
+      var fin = byIdC('btn-fin'); if(fin) fin.disabled = conImporto === 0 || senzaSegno > 0;
 
       scriviStato();
       /* Avvisa l'app che c'e' del lavoro nuovo da salvare (il salvataggio vero e'
@@ -5944,7 +5972,7 @@
       tendineHost().appendChild(m);
       var nuovo = btn.cloneNode(true);   /* via i vecchi ascoltatori, se il bottone viene ri-agganciato */
       btn.parentNode.replaceChild(nuovo, btn);
-      nuovo.addEventListener('click', function(){ apri(nuovo, m); });
+      nuovo.addEventListener('click', function(){ if(segnoMancante()) return; apri(nuovo, m); });
     }
     function costruisciDaStato(stato){
       ((stato && stato.ordine) || []).forEach(function(voce){ creaBlocco(voce.id, voce.dati); });
