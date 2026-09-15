@@ -860,9 +860,7 @@
   </div>
   <div class="toolbar-doc" style="margin-bottom:10px;">
     <button class="btn-ghost" id="btn-carica-classe">Carica classe</button>
-    <button class="btn-ghost" id="btn-carica-verifica">Carica cedolini</button>
     <input type="file" id="file-classe" accept=".json,application/json" style="display:none;" />
-    <input type="file" id="file-verifica" accept=".json,application/json" style="display:none;" />
     <button class="btn-ghost" id="btn-esporta-html">Esporta HTML</button>
     <button class="btn-ghost" id="btn-esporta-pdf">Esporta PDF</button>
     <button class="btn-archivio" id="btn-archivio-compiti"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:7px;"><path d="M9 4h3l2 2h5a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/><path d="M17 17v2a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h2"/></svg>Archivio compiti</button>
@@ -1183,10 +1181,6 @@
         cb && cb(true, null, (res.data || []).length);   // quante righe ha DAVVERO cancellato
       }, function(){ cb && cb(false, 'il cloud non ha risposto'); });
     }catch(e){ cb && cb(false, 'errore imprevisto'); }
-  }
-  function cloudSetArchivio(j){
-    if(!SB || !j) return;
-    try{ SB.from('ced_config').update({ archivio:j, updated_at:new Date().toISOString() }).eq('id', 1).then(function(){}, function(){}); }catch(e){}
   }
   /* ---------- Assegnazione MULTIPLA (fino a 3 fatture, ognuna col suo livello) ----------
      Codifica compatta salvata nei campi esistenti (assegnata_id / fattura_assegnata):
@@ -7340,7 +7334,7 @@
   });
 
   byId('btn-scegli-fatture').addEventListener('click', function(){
-    if(!FATTURE.length){ showAlert('Carica prima i cedolini con «Carica cedolini».'); return; }
+    if(!FATTURE.length){ showAlert('Nell\'archivio non c\'è ancora nessun cedolino.'); return; }
     if(!(CLASSE && CLASSE.alunni && CLASSE.alunni.length)){ showAlert('Carica o seleziona prima una classe.'); return; }
     openSelezioneFatture(STATE.assegnate || [], 'Assegna a tutta la classe ' + CLASSE.classe, function(list){
       STATE.assegnate = list;
@@ -7436,7 +7430,6 @@
     });
   });
   byId('btn-carica-classe').addEventListener('click', function(){ byId('file-classe').click(); });
-  byId('btn-carica-verifica').addEventListener('click', function(){ byId('file-verifica').click(); });
   byId('btn-esporta-html').addEventListener('click', esportaHTML);
   byId('btn-esporta-pdf').addEventListener('click', esportaPDF);
   byId('btn-pubblica-voti').addEventListener('click', pubblicaVoti);
@@ -7492,19 +7485,8 @@
     CLASSE = j; try{ localStorage.setItem('cf_classe', JSON.stringify(j)); }catch(e){}
     renderDocente();
   }); });
-  byId('file-verifica').addEventListener('change', function(){ leggiFile(this, function(j){
-    if(!j || !Array.isArray(j.fatture)){ showAlert('Formato archivio non riconosciuto: manca l\'elenco "fatture".'); return; }
-    try{ FATTURE = adattaArchivio(j); }catch(e){ showAlert('Errore nella lettura dell\'archivio: ' + e.message); return; }
-    buildRubrica();
-    try{ localStorage.setItem('cf_archivio', JSON.stringify(FATTURE)); }catch(e){}
-    cloudSetArchivio(j);
-    // Caricare un archivio azzera l'assegnazione: si riparte da zero (niente selezionato di default).
-    STATE.assegnate = []; STATE.assegnataId = null;
-    try{ localStorage.removeItem('cf_assegnata'); localStorage.removeItem('cf_livello'); }catch(e){}
-    cloudSetAssegnazione(null, null);
-    renderDocente();
-    showAlert('Archivio caricato: ' + FATTURE.length + ' esercitazioni.');
-  }); });
+  /* «Carica cedolini» tolto il 15/09/2026 (confondeva Mauro): gli esercizi li scrivo io nell'archivio
+     del cloud (ced_config.archivio), e la copia di sicurezza sta in Dropbox. */
 
   byId('ver-toggle').addEventListener('click', function(){ var closed = byId('ver-body').classList.toggle('collapsed'); this.textContent = closed ? '+' : '–'; });
 
