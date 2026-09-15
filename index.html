@@ -4604,8 +4604,8 @@
 
     var VOCI_DETRAZIONI = [
       {n:'Detrazione per altri familiari a carico',         d:'Ascendenti conviventi', scheda:'altri'},
-      {n:'Detrazione per coniuge a carico',                 d:'Se il coniuge non ha redditi propri', scheda:'coniuge'},
-      {n:'Detrazione per figli a carico',                   d:'Solo da 21 a 30 anni', scheda:'figli'},
+      {n:'Detrazione per coniuge a carico',                 d:'Coniuge con reddito fino a 2.840,51 euro', scheda:'coniuge'},
+      {n:'Detrazione per figli a carico',                   d:'Solo dai 21 ai 29 anni', scheda:'figli'},
       {n:'Detrazione per lavoro dipendente',                d:'Spetta a chi ha un lavoro dipendente', scheda:'lavoro'},
       {n:'Ulteriore detrazione (taglio del cuneo fiscale)', d:'Solo per certe fasce di reddito', scheda:'cuneo'}
     ];
@@ -4683,10 +4683,10 @@
                    [35100,35200,10,'da 35.100 a 35.200']];
           for(var i=0;i<t.length;i++){ if(R > t[i][0] && R <= t[i][1]) return {importo:t[i][2], testo:'redditi ' + t[i][3]}; }
           return null; },
-        spiega: 'Anche questa dipende dal <b>tuo</b> reddito annuo, non da quello del coniuge: ' +
+        spiega: 'Spetta se il coniuge guadagna al massimo <b>2.840,51 euro l’anno</b>; l’importo però dipende dal <b>tuo</b> reddito annuo, non da quello del coniuge: ' +
                 'più guadagni, meno detrazione ti spetta.' },
       figli: { fasce: FASCE_FIGLI,
-        spiega: 'Spetta solo per i figli <b>dai 21 ai 30 anni</b>: per i più piccoli c’è l’assegno unico, ' +
+        spiega: 'Spetta solo per i figli <b>dai 21 ai 29 anni</b> che guadagnano al massimo 2.840,51 euro l’anno (4.000 fino a 24 anni): per i più piccoli c’è l’assegno unico, ' +
                 'che l’INPS versa sul conto e non passa dalla busta paga. La formula vale <b>per un figlio</b>; ' +
                 'con più figli il limite di 95.000 sale di 15.000 per ciascuno dopo il primo.' },
       altri: { fasce: FASCE_ALTRI,
