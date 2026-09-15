@@ -4560,7 +4560,7 @@
       {id:'irpef-n', n:'IRPEF netta', tipo:'irpef-netta'},
       {id:'netto',   n:'Netto in busta', tipo:'netto'},
       {id:'retr',    n:'Retribuzione', pieno:true},
-      {id:'integr',  n:'Voci integrative', tipo:'integrative'}
+      {id:'somma',   n:'Somma integrativa (taglio del cuneo fiscale)', tipo:'somma'}
     ];
 
     /* Sotto-voci della retribuzione, anche queste in ordine alfabetico. */
@@ -4684,9 +4684,6 @@
         spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 20.000 euro.' }
     };
 
-    var VOCI_INTEGRATIVE = [
-      {n:'Somma integrativa (taglio del cuneo fiscale)', d:'Solo per certe fasce di reddito', scheda:'somma'}
-    ];
     var VOCI_NETTO = [
       {n:'Addizionale comunale'},
       {n:'Addizionale regionale'},
@@ -5424,7 +5421,7 @@
       bl.className = 'blocco';
       bl.innerHTML =
         '<div class="blocco-h"><span class="t">' + titolo + '</span>' +
-        '<span class="tot" data-tot>0,00</span></div><div class="blocco-b"></div>';
+        '<span class="tot"></span></div><div class="blocco-b"></div>';   /* il totale sta in fondo (collaudo 15/09) */
       var corpo = bl.querySelector('.blocco-b');
 
       var r = document.createElement('div');
@@ -5535,9 +5532,58 @@
       creaBloccoElenco('detr', 'Detrazioni', VOCI_DETRAZIONI, 'Quale detrazione?',
         '＋ Aggiungi una detrazione', 'Conferma le detrazioni', init);
     }
-    function creaVociIntegrative(init){
-      creaBloccoElenco('integr', 'Voci integrative', VOCI_INTEGRATIVE, 'Quale voce?',
-        '＋ Aggiungi una voce', 'Conferma le voci integrative', init);
+    /* ---------- blocco SOMMA INTEGRATIVA (taglio del cuneo fiscale) ----------
+       L'unica voce integrativa rimasta (15/09/2026: niente ANF, niente trattamento
+       integrativo). Il reddito presunto e' quello gia' scritto nelle Detrazioni,
+       l'alunno sceglie la fascia, il conto e la divisione per 12 li fa l'app. */
+    function creaSommaIntegrativa(init){
+      var bl = document.createElement('div');
+      bl.className = 'blocco';
+      bl.innerHTML =
+        '<div class="blocco-h"><span class="t">Somma integrativa (taglio del cuneo fiscale)</span>' +
+        '<span class="tot" data-tot>0,00</span></div><div class="blocco-b"></div>';
+      var corpo = bl.querySelector('.blocco-b');
+
+      var bdel = document.createElement('button');
+      bdel.type='button';
+      bdel.style.cssText = 'width:32px;height:32px;border:1px solid transparent;background:transparent;border-radius:8px;color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;margin-left:10px;';
+      bdel.title='Elimina la somma integrativa';
+      bdel.setAttribute('aria-label','Elimina il blocco Somma integrativa');
+      bdel.innerHTML = CESTINO;
+      bdel.addEventListener('click', function(){ butta(bl); creati['somma']=false; sbloccaVoce('somma'); aggiorna(); });
+      bl.querySelector('.blocco-h').appendChild(bdel);
+
+      var cRed = document.createElement('div');
+      cRed.className = 'campo campo-reddito';
+      cRed.innerHTML = '<label>Reddito annuo presunto</label>' +
+                       '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Reddito annuo presunto" data-reddito-presunto /></div>';
+      corpo.appendChild(cRed);
+      var inRed = cRed.querySelector('input');
+      if(init && init.reddito) REDDITO = init.reddito;
+      inRed.value = REDDITO;
+      inRed.addEventListener('input', function(){ cambiaReddito(inRed.value, inRed); aggiorna(); });
+
+      var d = document.createElement('div');
+      d.className = 'riga-detrazione';
+      d._tendine = [];
+      var dc = document.createElement('div');
+      dc.className = 'detr-corpo';
+      d.appendChild(dc);
+      corpo.appendChild(d);
+      pannelloFasce(dc, d, function(){}, SCHEDE.somma, init);
+
+      var r = document.createElement('div');
+      r.setAttribute('data-riga','');
+      r.style.display = 'none';
+      r._nelFoglio = false;
+      r._tendine = d._tendine;   /* cosi' il cestino porta via anche la tendina delle fasce */
+      r._valore = function(){ return d._mese(); };
+      r._senzaSegno = function(){ return false; };
+      corpo.appendChild(r);
+
+      bl._id = 'somma';
+      bl._leggi = function(){ return { reddito:inRed.value, fascia:d._leggiPannello().fascia }; };
+      blocchiEl().appendChild(bl);
     }
 
     /* ---------- blocco IRPEF NETTA ----------
@@ -5713,7 +5759,7 @@
       var cImp = document.createElement('div');
       cImp.className = 'campo campo-reddito';
       cImp.innerHTML = '<label>Imponibile fiscale</label>' +
-                       '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Imponibile fiscale" /></div>';
+                       '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Imponibile fiscale" data-imp-netto /></div>';
       corpo.appendChild(cImp);
       var inImp = cImp.querySelector('input');
       inImp.addEventListener('input', aggiorna);
@@ -5834,7 +5880,7 @@
       else if(v.tipo === 'irpef') creaIrpefLorda(init);
       else if(v.tipo === 'detrazioni') creaDetrazioni(init);
       else if(v.tipo === 'irpef-netta') creaIrpefNetta(init);
-      else if(v.tipo === 'integrative') creaVociIntegrative(init);
+      else if(v.tipo === 'somma') creaSommaIntegrativa(init);
       else if(v.tipo === 'netto') creaNetto(init);
       else if(v.tipo === 'anagrafica') creaAnagrafica(id, init);
     }
@@ -5869,10 +5915,35 @@
       try{ var s = JSON.parse(raw); return (s && s.ordine && s.ordine.length) ? s : null; }catch(e){ return null; }
     }
 
+    /* L'imponibile fiscale che l'alunno ha costruito: retribuzione e contributi coi SUOI segni
+       (e' la striscia verde). null se il blocco dei contributi non c'e'. */
+    function imponibileCostruito(ed){
+      var rc = ed.querySelectorAll('.riga-contributi');
+      if(!rc.length) return null;
+      var t = 0;
+      ed.querySelectorAll('.blocco').forEach(function(b){
+        var tt = b.querySelector('.blocco-h .t');
+        if(tt && tt.textContent === 'Retribuzione') b.querySelectorAll('[data-riga]').forEach(function(x){ if(x._valore) t += x._valore(); });
+      });
+      rc.forEach(function(x){ if(x._valore) t += x._valore(); });
+      return t;
+    }
+
     /* ---------- ricalcolo ---------- */
     function aggiorna(){
       var ed = byIdC('ced-editor');
       if(!ed) return;
+
+      /* Il Netto parte dall'imponibile fiscale gia' costruito: lo riporta l'app, cosi' l'alunno
+         non deve risalire il foglio col dito (collaudo 15/09). Non e' un automatismo: se
+         retribuzione o contributi sono sbagliati, resta sbagliato. Senza il blocco dei
+         contributi la casella si scrive a mano. */
+      var inImpNetto = ed.querySelector('input[data-imp-netto]');
+      if(inImpNetto){
+        var fisc = imponibileCostruito(ed);
+        inImpNetto.readOnly = fisc !== null;
+        if(fisc !== null) inImpNetto.value = euro(fisc);
+      }
       ed.querySelectorAll('.sotto').forEach(function(s){
         var t = 0;
         s.querySelectorAll('[data-riga]').forEach(function(r){ if(r._valore) t += r._valore(); });
