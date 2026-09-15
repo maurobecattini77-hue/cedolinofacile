@@ -4543,8 +4543,6 @@
     /* Voci del menu principale, in ordine ALFABETICO di proposito: l'ordine giusto
        del cedolino deve conoscerlo l'alunno, non suggerirglielo l'app. */
     var VOCI = [
-      {id:'add-com', n:'Addizionale comunale', tipo:'addizionale'},
-      {id:'add-reg', n:'Addizionale regionale', tipo:'addizionale'},
       {id:'az',      n:'Anagrafica azienda', tipo:'anagrafica'},
       {id:'dip',     n:'Anagrafica dipendente', tipo:'anagrafica'},
       {id:'contr',   n:'Contributi previdenziali', tipo:'contributi'},
@@ -4687,20 +4685,6 @@
       {n:'IRPEF netta'},
       {n:'Voci integrative'}
     ];
-    var ADDIZIONALI = {
-      'add-reg': {
-        titolo:'Addizionale regionale', ente:'Regione Piemonte · imponibile 2025',
-        scaglioni:[{n:'fino a 15.000', ali:'1,62 %'},{n:'da 15.001 a 28.000', ali:'2,13 %'},
-                   {n:'da 28.001 a 50.000', ali:'2,75 %'},{n:'oltre 50.000', ali:'3,33 %'}],
-        derivate:[{nome:'Rata del mese', formula:'addizionale dell’anno ÷ 11 rate', quota:1, rate:11}]
-      },
-      'add-com': {
-        titolo:'Addizionale comunale', ente:'Comune di Alba · imponibile 2025',
-        scaglioni:[{n:'fino a 28.000', ali:'0,40 %'},{n:'da 28.001 a 50.000', ali:'0,50 %'},{n:'oltre 50.000', ali:'0,70 %'}],
-        derivate:[{nome:'Saldo 2025 · rata del mese',   formula:'70 % dell’addizionale ÷ 11 rate', quota:0.70, rate:11},
-                  {nome:'Acconto 2026 · rata del mese', formula:'30 % dell’addizionale ÷ 9 rate',  quota:0.30, rate:9}]
-      }
-    };
     var ANAGRAFICHE = {
       az:  {titolo:'Anagrafica azienda', campi:[{l:'Ragione sociale', larga:true},{l:'Comune'}]},
       dip: {titolo:'Anagrafica dipendente', campi:[
@@ -4715,8 +4699,8 @@
       ['irpefLorda','IRPEF lorda'],
       ['detrazioni','Detrazioni'],
       ['irpefNetta','IRPEF netta'],
-      ['addizionaleRegionaleRata','Addizionale regionale · rata del mese'],
-      ['addizionaleComunaleRata','Addizionale comunale · rata del mese']
+      ['addizionaleRegionaleRata','Addizionale regionale'],
+      ['addizionaleComunaleRata','Addizionale comunale']
     ];
 
     var creati = {};
@@ -5573,161 +5557,6 @@
       blocchiEl().appendChild(bl);
     }
 
-    /* ---------- le ADDIZIONALI ----------
-       L'unica voce che non nasce nel mese: si calcolano sull'imponibile dell'anno
-       chiuso e si trattengono a rate. Ogni passaggio ha la sua scorciatoia: chi si
-       blocca scrive il risultato, ma l'app se lo segna per il docente. */
-    function creaAddizionale(id, init){
-      var cfg = ADDIZIONALI[id];
-      var bl = document.createElement('div');
-      bl.className = 'blocco';
-      bl.innerHTML =
-        '<div class="blocco-h"><span class="t">' + cfg.titolo + '</span>' +
-        '<span class="s">' + cfg.ente + '</span>' +
-        '<span class="tot" data-tot>0,00</span></div><div class="blocco-b"></div>';
-      var corpo = bl.querySelector('.blocco-b');
-
-      var r = document.createElement('div');
-      r.setAttribute('data-riga','');
-      r.style.display = 'none';
-      r._nelFoglio = false;
-      r._tendine = [];
-
-      var bdel = document.createElement('button');
-      bdel.type='button';
-      bdel.style.cssText = 'width:32px;height:32px;border:1px solid transparent;background:transparent;border-radius:8px;color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;margin-left:10px;';
-      bdel.title='Elimina ' + cfg.titolo.toLowerCase();
-      bdel.setAttribute('aria-label','Elimina il blocco ' + cfg.titolo);
-      bdel.innerHTML = CESTINO;
-      bdel.addEventListener('click', function(){
-        butta(bl); creati[id]=false; sbloccaVoce(id);
-        SCORCIATOIE = SCORCIATOIE.filter(function(s){ return s.blocco !== cfg.titolo; });
-        aggiorna();
-      });
-      bl.querySelector('.blocco-h').appendChild(bdel);
-
-      var box = document.createElement('div');
-      box.className = 'scrollx';
-      var tb = document.createElement('table');
-      tb.className = 'scaglioni';
-      tb.innerHTML =
-        '<caption>Scaglioni · ' + cfg.ente + '</caption>' +
-        '<thead><tr><th>Scaglione</th><th class="n">Imponibile</th><th class="n">Aliquota</th><th class="n">Importo</th></tr></thead>' +
-        '<tbody></tbody>';
-      var tbody = tb.querySelector('tbody');
-      cfg.scaglioni.forEach(function(s, i){
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>' + s.n + '</td>' +
-          '<td class="n"><div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Imponibile nello scaglione ' + (i+1) + '" /></div></td>' +
-          '<td class="n ali">' + s.ali + '</td>' +
-          '<td class="n"><div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Importo dello scaglione ' + (i+1) + '" /></div></td>';
-        tbody.appendChild(tr);
-      });
-      var trTot = document.createElement('tr');
-      trTot.className = 'tot-riga';
-      trTot.innerHTML = '<td colspan="2">Addizionale dell’anno</td><td class="n ali">—</td><td class="n valore" data-annua>0,00</td>';
-      tbody.appendChild(trTot);
-      box.appendChild(tb);
-      corpo.appendChild(box);
-
-      /* --- scorciatoia sulla tabella --- */
-      var saltaBox = document.createElement('div');
-      saltaBox.className = 'salta';
-      saltaBox.innerHTML = '<button type="button" class="link-salta">Non ricordi il calcolo? Scrivi direttamente l’addizionale dell’anno</button>' +
-                           '<div class="imp salta-campo" hidden><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Addizionale dell’anno" /></div>';
-      corpo.appendChild(saltaBox);
-      var inSalta = saltaBox.querySelector('input');
-      var saltaAttiva = false;
-      function toggleSalta(){
-        saltaAttiva = !saltaAttiva;
-        box.hidden = saltaAttiva;
-        saltaBox.querySelector('.salta-campo').hidden = !saltaAttiva;
-        saltaBox.querySelector('.link-salta').textContent = saltaAttiva ? 'Torna a calcolare per scaglioni' : 'Non ricordi il calcolo? Scrivi direttamente l’addizionale dell’anno';
-        segna(cfg.titolo, 'addizionale dell’anno', saltaAttiva);
-      }
-      saltaBox.querySelector('.link-salta').addEventListener('click', function(){ toggleSalta(); aggiorna(); });
-      inSalta.addEventListener('input', aggiorna);
-
-      /* --- le rate --- */
-      var conto = document.createElement('div');
-      conto.className = 'detr-conto';
-      corpo.appendChild(conto);
-      var righeDerivate = cfg.derivate.map(function(dd, i){
-        var riga = document.createElement('div');
-        riga.className = 'cr' + (i === cfg.derivate.length-1 ? ' ultima' : '');
-        riga.innerHTML = '<span class="l">' + dd.nome + '</span>' +
-                         '<span class="c">' + dd.formula + '</span>' +
-                         '<span class="v" data-rata>0,00</span>' +
-                         '<div class="imp imp-rata" hidden><input type="text" inputmode="decimal" placeholder="0,00" aria-label="' + dd.nome + '" /></div>' +
-                         '<button type="button" class="link-salta piccolo">scrivi il risultato</button>';
-        var suo = riga.querySelector('input');
-        var attiva = false;
-        function toggleDer(){
-          attiva = !attiva;
-          riga.querySelector('[data-rata]').hidden = attiva;
-          riga.querySelector('.imp-rata').hidden = !attiva;
-          riga.querySelector('.link-salta').textContent = attiva ? 'torna al calcolo' : 'scrivi il risultato';
-          segna(cfg.titolo, dd.nome, attiva);
-        }
-        riga.querySelector('.link-salta').addEventListener('click', function(){ toggleDer(); aggiorna(); });
-        suo.addEventListener('input', aggiorna);
-        conto.appendChild(riga);
-        return {cfg:dd, el:riga, input:suo, attiva:function(){ return attiva; }, toggle:toggleDer};
-      });
-
-      function sommaScaglioni(){
-        var t = 0;
-        tbody.querySelectorAll('tr:not(.tot-riga)').forEach(function(tr){
-          var n = leggiNumero(tr.querySelectorAll('input')[1].value);
-          if(n !== null) t += n;
-        });
-        return t;
-      }
-      r._valore = function(){
-        var annua = saltaAttiva ? (leggiNumero(inSalta.value) || 0) : sommaScaglioni();
-        trTot.querySelector('[data-annua]').textContent = euro(annua);
-        var tot = 0;
-        righeDerivate.forEach(function(dd){
-          var v = dd.attiva() ? (leggiNumero(dd.input.value) || 0) : (annua * dd.cfg.quota / dd.cfg.rate);
-          dd.el.querySelector('[data-rata]').textContent = euro(v);
-          tot += v;
-        });
-        return tot;
-      };
-      r._senzaSegno = function(){ return false; };
-      corpo.appendChild(r);
-      tb.querySelectorAll('input').forEach(function(i){ i.addEventListener('input', aggiorna); });
-
-      if(init){
-        var trs = tbody.querySelectorAll('tr:not(.tot-riga)');
-        (init.sc || []).forEach(function(coppia, i){
-          if(!trs[i]) return;
-          var ins = trs[i].querySelectorAll('input');
-          ins[0].value = coppia[0] || '';
-          ins[1].value = coppia[1] || '';
-        });
-        if(init.salta) toggleSalta();
-        if(init.saltaV) inSalta.value = init.saltaV;
-        (init.der || []).forEach(function(dd, i){
-          if(!righeDerivate[i]) return;
-          if(dd.salta) righeDerivate[i].toggle();
-          if(dd.v) righeDerivate[i].input.value = dd.v;
-        });
-      }
-
-      bl._id = id;
-      bl._leggi = function(){
-        var sc = [];
-        tbody.querySelectorAll('tr:not(.tot-riga)').forEach(function(tr){
-          var ins = tr.querySelectorAll('input');
-          sc.push([ins[0].value, ins[1].value]);
-        });
-        return { sc:sc, salta:saltaAttiva, saltaV:inSalta.value,
-                 der:righeDerivate.map(function(dd){ return { salta:dd.attiva(), v:dd.input.value }; }) };
-      };
-      blocchiEl().appendChild(bl);
-    }
     /* Le scorciatoie prese dall'alunno: non si vedono a schermo, servono al docente. */
     function segna(blocco, passaggio, attiva){
       SCORCIATOIE = SCORCIATOIE.filter(function(s){ return !(s.blocco === blocco && s.passaggio === passaggio); });
@@ -5944,7 +5773,6 @@
       else if(v.tipo === 'irpef') creaIrpefLorda(init);
       else if(v.tipo === 'detrazioni') creaDetrazioni(init);
       else if(v.tipo === 'irpef-netta') creaIrpefNetta(init);
-      else if(v.tipo === 'addizionale') creaAddizionale(id, init);
       else if(v.tipo === 'integrative') creaVociIntegrative(init);
       else if(v.tipo === 'netto') creaNetto(init);
       else if(v.tipo === 'anagrafica') creaAnagrafica(id, init);
@@ -6273,16 +6101,10 @@
     /* Le scorciatoie lette dallo stato salvato del foglio. Le vede SOLO il docente,
        nella Valuta: mai l'alunno, mai il cedolino (collaudo del 14/09). */
     function scorciatoieDaStato(stato){
-      var out = [];
-      ['add-reg', 'add-com'].forEach(function(id){
-        var dati = datiBlocco(stato, id); if(!dati) return;
-        var cfg = ADDIZIONALI[id];
-        if(dati.salta) out.push({ blocco:cfg.titolo, passaggio:'addizionale dell’anno', v:(dati.saltaV || '') });
-        (dati.der || []).forEach(function(dd, i){
-          if(dd && dd.salta && cfg.derivate[i]) out.push({ blocco:cfg.titolo, passaggio:cfg.derivate[i].nome, v:(dd.v || '') });
-        });
-      });
-      return out;
+      /* Le scorciatoie c'erano solo nel calcolo delle addizionali, tolto il 15/09/2026:
+         adesso l'importo lo da' l'esercizio e si scrive nel Netto in busta. Il meccanismo
+         (segna, riquadro giallo nella Valuta) resta pronto per un passaggio futuro. */
+      return [];
     }
 
     return {
@@ -6492,8 +6314,10 @@
       show('soluzione-view');
     } else {
       var ed = byId('editor');
-      if(VC.ct === 2){ ed.innerHTML = f.nonSvolta ? (bannerNS + skelDash) : (f.dashboardAlunno || ''); }
-      if(VC.ct === 2 && !f.nonSvolta) tracciaScorciatoie(ed);
+      if(VC.ct === 2){
+        ed.innerHTML = f.nonSvolta ? (bannerNS + skelDash) : (f.dashboardAlunno || '');
+        if(!f.nonSvolta) tracciaScorciatoie(ed);
+      }
       else { ed.innerHTML = f.dashboardCorretta || ''; }
       ed.classList.add('sol-mode');
       var sb = byId('sol-banner');
