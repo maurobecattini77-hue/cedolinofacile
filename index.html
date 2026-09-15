@@ -4647,14 +4647,6 @@
       {n:'Reddito oltre 20.000',       f:'non spetta alcuna somma',
        mostra:function(){ return 'non spetta'; }, calcola:function(){ return 0; }}
     ];
-    /* Il trattamento integrativo (l'ex bonus Renzi), semplificato per la scuola: 1.200 l'anno
-       fino a 15.000. La fascia da 15.001 a 28.000, che dipende dalle detrazioni, qui non c'e' (15/09/2026). */
-    var FASCE_TRATT = [
-      {n:'Reddito fino a 15.000', f:'importo fisso di 1.200',
-       mostra:function(){ return '1.200,00'; }, calcola:function(){ return 1200; }},
-      {n:'Reddito oltre 15.000',  f:'non spetta alcun trattamento',
-       mostra:function(){ return 'non spetta'; }, calcola:function(){ return 0; }}
-    ];
     var SCHEDE = {
       lavoro: { fasce: FASCE_LAVORO,
         /* Art. 13 TUIR: sopra i 25.000 e fino a 35.000 la detrazione cresce di 65 euro.
@@ -4680,14 +4672,11 @@
       cuneo: { fasce: FASCE_CUNEO,
         spiega: 'Spetta soltanto a chi ha un reddito annuo tra 20.000 e 40.000 euro.' },
       somma: { fasce: FASCE_SOMMA, lblAnnua:'Somma annua', lblMese:'Somma del mese',
-        spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 20.000 euro.' },
-      tratt: { fasce: FASCE_TRATT, lblAnnua:'Trattamento annuo', lblMese:'Trattamento del mese',
-        spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 15.000 euro.' }
+        spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 20.000 euro.' }
     };
 
     var VOCI_INTEGRATIVE = [
-      {n:'Somma integrativa (taglio del cuneo fiscale)', d:'Solo per certe fasce di reddito', scheda:'somma'},
-      {n:'Trattamento integrativo',                      d:'Solo per certe fasce di reddito', scheda:'tratt'}
+      {n:'Somma integrativa (taglio del cuneo fiscale)', d:'Solo per certe fasce di reddito', scheda:'somma'}
     ];
     var VOCI_NETTO = [
       {n:'Addizionale comunale'},
