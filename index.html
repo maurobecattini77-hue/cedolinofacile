@@ -4647,6 +4647,14 @@
       {n:'Reddito oltre 20.000',       f:'non spetta alcuna somma',
        mostra:function(){ return 'non spetta'; }, calcola:function(){ return 0; }}
     ];
+    /* Il trattamento integrativo (l'ex bonus Renzi), semplificato per la scuola: 1.200 l'anno
+       fino a 15.000. La fascia da 15.001 a 28.000, che dipende dalle detrazioni, qui non c'e' (15/09/2026). */
+    var FASCE_TRATT = [
+      {n:'Reddito fino a 15.000', f:'importo fisso di 1.200',
+       mostra:function(){ return '1.200,00'; }, calcola:function(){ return 1200; }},
+      {n:'Reddito oltre 15.000',  f:'non spetta alcun trattamento',
+       mostra:function(){ return 'non spetta'; }, calcola:function(){ return 0; }}
+    ];
     var SCHEDE = {
       lavoro: { fasce: FASCE_LAVORO,
         /* Art. 13 TUIR: sopra i 25.000 e fino a 35.000 la detrazione cresce di 65 euro.
@@ -4672,12 +4680,14 @@
       cuneo: { fasce: FASCE_CUNEO,
         spiega: 'Spetta soltanto a chi ha un reddito annuo tra 20.000 e 40.000 euro.' },
       somma: { fasce: FASCE_SOMMA, lblAnnua:'Somma annua', lblMese:'Somma del mese',
-        spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 20.000 euro.' }
+        spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 20.000 euro.' },
+      tratt: { fasce: FASCE_TRATT, lblAnnua:'Trattamento annuo', lblMese:'Trattamento del mese',
+        spiega: 'Spetta soltanto a chi ha un reddito annuo fino a 15.000 euro.' }
     };
 
     var VOCI_INTEGRATIVE = [
-      {n:'Assegno per il nucleo familiare (ANF)',        d:'Secondo le tabelle INPS', scheda:'anf'},
-      {n:'Somma integrativa (taglio del cuneo fiscale)', d:'Solo per certe fasce di reddito', scheda:'somma'}
+      {n:'Somma integrativa (taglio del cuneo fiscale)', d:'Solo per certe fasce di reddito', scheda:'somma'},
+      {n:'Trattamento integrativo',                      d:'Solo per certe fasce di reddito', scheda:'tratt'}
     ];
     var VOCI_NETTO = [
       {n:'Addizionale comunale'},
@@ -4706,9 +4716,20 @@
     var creati = {};
     var aperto = null;
     var SCORCIATOIE = [];
+    var REDDITO = '';   /* reddito annuo presunto: si scrive una volta, vale per Detrazioni e Voci integrative */
     var pulsantiVoce = {};
 
     function byIdC(id){ return document.getElementById(id); }
+    function redditoPresunto(){ var n = leggiNumero(REDDITO); return n === null ? 0 : n; }
+    /* L'alunno scrive il reddito in un blocco a fasce: l'altro lo mostra uguale e tutte le fasce
+       si rifanno. Cambiato il reddito, cambiano gli importi: le conferme vanno ridate. */
+    function cambiaReddito(v, da){
+      REDDITO = v;
+      var bh = blocchiEl(); if(!bh) return;
+      bh.querySelectorAll('input[data-reddito-presunto]').forEach(function(i){ if(i !== da) i.value = v; });
+      bh.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._ricalcola) x._ricalcola(); });
+      bh.querySelectorAll('.blocco').forEach(function(b){ if(b._scuoti) b._scuoti(); });
+    }
     function blocchiEl(){ return byIdC('blocchi'); }
     function euro(n){ return n.toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2, useGrouping:true}); }
     function leggiNumero(v){ var n = parseFloat(String(v).replace(/\./g,'').replace(',','.')); return isNaN(n) ? null : n; }
@@ -5239,14 +5260,7 @@
       fwrap.appendChild(fcur);
       fc.appendChild(fwrap);
 
-      /* reddito annuo presunto: sta in alto, accanto alla spiegazione */
-      var rc = document.createElement('div');
-      rc.className = 'campo campo-reddito';
-      rc.innerHTML = '<label>Reddito annuo presunto</label>' +
-                     '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Reddito annuo presunto" /></div>';
-      var inR = rc.querySelector('input');
-
-      alto.appendChild(rc);
+      /* il reddito annuo presunto non sta piu' qui: si scrive una volta in cima al blocco (15/09/2026) */
       corpo.appendChild(alto);
       riga.appendChild(fc);
       corpo.appendChild(riga);
@@ -5264,8 +5278,7 @@
 
       var annua = 0, mese = 0;
       function ricalcola(){
-        var R = leggiNumero(inR.value);
-        if(R === null) R = 0;
+        var R = redditoPresunto();
         var rigaMagg = conto.querySelector('[data-riga-magg]');
         if(!scelta){
           conto.querySelector('[data-formula]').textContent = 'scegli la fascia';
@@ -5288,41 +5301,18 @@
         conto.querySelector('[data-annua]').textContent = euro(annua);
         conto.querySelector('[data-mese]').textContent = euro(mese);
       }
-      inR.addEventListener('input', function(){ ricalcola(); scuoti(); aggiorna(); });
+      d._ricalcola = ricalcola;
 
       if(init){
-        if(init.reddito) inR.value = init.reddito;
         if(init.fascia != null && cfg.fasce[init.fascia]) setFascia(cfg.fasce[init.fascia]);
       }
       ricalcola();
 
       d._mese = function(){ return mese; };
       d._leggiPannello = function(){
-        return { reddito:inR.value, fascia:(scelta ? cfg.fasce.indexOf(scelta) : null) };
+        return { fascia:(scelta ? cfg.fasce.indexOf(scelta) : null) };
       };
     }
-    /* L'ANF non ha una formula: l'importo viene dalle tabelle INPS. */
-    function pannelloANF(corpo, d, scuoti, init){
-      var alto = document.createElement('div');
-      alto.className = 'detr-alto';
-      var spiega = document.createElement('p');
-      spiega.className = 'detr-spiega';
-      spiega.innerHTML = 'Spetta per il coniuge: se anche un solo figlio del nucleo prende ' +
-                         'l’assegno unico, non spetta a nessuno. L’importo viene dalle tabelle INPS.';
-      alto.appendChild(spiega);
-      var rc = document.createElement('div');
-      rc.className = 'campo campo-reddito';
-      rc.innerHTML = '<label>Assegno del mese</label>' +
-                     '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Assegno del mese" /></div>';
-      var inA = rc.querySelector('input');
-      alto.appendChild(rc);
-      corpo.appendChild(alto);
-      inA.addEventListener('input', function(){ scuoti(); aggiorna(); });
-      if(init && init.assegno) inA.value = init.assegno;
-      d._mese = function(){ var n = leggiNumero(inA.value); return n === null ? 0 : n; };
-      d._leggiPannello = function(){ return { assegno:inA.value }; };
-    }
-
     /* ---------- una riga di Detrazioni / Voci integrative ---------- */
     function creaRigaScelta(scuoti, vociMenu, titoloMenu, init){
       var d = document.createElement('div');
@@ -5349,8 +5339,7 @@
         cur.className = 'cur';
         cur.innerHTML = '<span class="n">' + v.n + '</span>' + (v.d ? '<span class="d">' + v.d + '</span>' : '');
         corpo.innerHTML = '';
-        if(v.scheda === 'anf') pannelloANF(corpo, d, scuoti, initPann);
-        else if(v.scheda) pannelloFasce(corpo, d, scuoti, SCHEDE[v.scheda], initPann);
+        if(v.scheda) pannelloFasce(corpo, d, scuoti, SCHEDE[v.scheda], initPann);
         else { d._mese = function(){ return 0; }; d._leggiPannello = function(){ return {}; }; }
       }
       var menu = creaMenu([{titolo:titoloMenu}].concat(vociMenu), function(v){
@@ -5414,6 +5403,22 @@
       bdel.addEventListener('click', function(){ butta(bl); creati[id]=false; sbloccaVoce(id); aggiorna(); });
       bl.querySelector('.blocco-h').appendChild(bdel);
 
+      /* il reddito annuo presunto si scrive UNA volta, qui in cima (15/09/2026):
+         vale per tutte le voci del blocco e compare uguale nell'altro blocco a fasce */
+      var cRed = document.createElement('div');
+      cRed.className = 'campo campo-reddito';
+      cRed.style.marginBottom = '12px';
+      cRed.innerHTML = '<label>Reddito annuo presunto</label>' +
+                       '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Reddito annuo presunto" data-reddito-presunto /></div>';
+      corpo.appendChild(cRed);
+      var inRed = cRed.querySelector('input');
+      var redInit = (init && init.reddito) ? init.reddito : '';
+      /* fogli di prima del 15/09: il reddito stava in ogni voce, si prende il primo scritto */
+      if(!redInit && init && init.righe){ init.righe.forEach(function(ir){ if(!redInit && ir && ir.reddito) redInit = ir.reddito; }); }
+      if(redInit) REDDITO = redInit;
+      inRed.value = REDDITO;
+      inRed.addEventListener('input', function(){ cambiaReddito(inRed.value, inRed); aggiorna(); });
+
       var elenco = document.createElement('div');
       elenco.className = 'elenco-detrazioni';
       corpo.appendChild(elenco);
@@ -5466,10 +5471,11 @@
       if(init && init.conf) conferma();
 
       bl._id = id;
+      bl._scuoti = scuoti;
       bl._leggi = function(){
         var righe = [];
         elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._leggi) righe.push(x._leggi()); });
-        return { righe:righe, conf:!!r._confermato };
+        return { reddito:inRed.value, righe:righe, conf:!!r._confermato };
       };
       blocchiEl().appendChild(bl);
     }
@@ -5879,6 +5885,7 @@
       tendineHost().innerHTML = '';
       creati = {};
       SCORCIATOIE = [];
+      REDDITO = '';
       pulsantiVoce = {};
       var bh = blocchiEl(); if(bh) bh.innerHTML = '';
     }
@@ -5948,12 +5955,11 @@
       ((stato && stato.ordine) || []).forEach(function(b){ if(b.id === id) out = b.dati; });
       return out;
     }
-    function meseRigaScelta(rr){
+    function meseRigaScelta(rr, reddito){
       if(!rr || !rr.scheda) return 0;
-      if(rr.scheda === 'anf') return num0(rr.assegno);
       var cfg = SCHEDE[rr.scheda];
       if(!cfg || rr.fascia == null || !cfg.fasce[rr.fascia]) return 0;
-      var R = num0(rr.reddito);
+      var R = num0(reddito != null ? reddito : rr.reddito);   /* prima del 15/09 il reddito stava in ogni voce */
       var f = cfg.fasce[rr.fascia];
       var annua = (R > 0 || f.calcola.length === 0) ? f.calcola(R) : 0;
       if(annua < 0) annua = 0;
@@ -6007,7 +6013,7 @@
       var detr = datiBlocco(stato, 'detr');
       if(detr){
         var td = 0;
-        (detr.righe || []).forEach(function(rr){ td += meseRigaScelta(rr); });
+        (detr.righe || []).forEach(function(rr){ td += meseRigaScelta(rr, detr.reddito); });
         d.detr = detr.conf ? td : 0;
       }
       var az = datiBlocco(stato, 'az'); if(az && az.campi) d.az = az.campi;
