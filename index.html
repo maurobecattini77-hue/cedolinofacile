@@ -239,6 +239,7 @@
   .val-card .vc-voto{ font-size:30px; font-weight:600; color:#3f6b52; line-height:1; }
   .val-card .vc-txt-t{ font-weight:500; color:#3f6b52; }
   .val-card .vc-txt-s{ font-size:13px; color:#5b6b82; }
+  .val-card .vc-giud{ font-size:15px; color:#262420; white-space:pre-wrap; margin:4px 0 4px; }
   .vv-sum{ display:flex; background:#eef3fb; border:1px solid #cddcf0; border-radius:12px; padding:16px 18px; margin-bottom:14px; }
   .vv-col{ flex:1; text-align:center; }
   .vv-lab{ font-size:12px; color:#5b6b82; margin-bottom:5px; }
@@ -1312,6 +1313,7 @@
     if(t){ t.textContent = titolo; t.style.color = color || '#b4472f'; }
     if(m) m.textContent = msg;
     show('blocco');
+    cartaValutazioneBlocco(titolo === 'Verifica consegnata' ? function(){ mostraBloccoMsg(icona, titolo, msg, color); } : null);
   }
   /* Cattura e salva nel cloud la consegna della fattura CORRENTE (senza mostrare viste). */
   function catturaConsegnaCorrente(cb){
@@ -4728,6 +4730,7 @@
     var creati = {};
     var aperto = null;
     var SCORCIATOIE = [];
+    var MUTO = false;   /* ricostruzione in sola lettura (Valuta, soluzione): niente avviso al salvataggio */
     var REDDITO = '';   /* reddito annuo presunto: si scrive una volta, vale per Detrazioni e Voci integrative */
     var pulsantiVoce = {};
 
@@ -6024,7 +6027,7 @@
          il solito, con la sua attesa): serve per le scelte fatte col mouse, che
          non passano dalle caselle di testo. isTrusted=false, quindi non conta
          come "digitazione vera" per la protezione del recupero dal cloud. */
-      try{ document.getElementById('editor').dispatchEvent(new Event('input')); }catch(e){}
+      if(!MUTO){ try{ document.getElementById('editor').dispatchEvent(new Event('input')); }catch(e){} }
     }
 
     /* ---------- costruzione / ricostruzione ---------- */
@@ -6083,6 +6086,18 @@
       }
       if(stato) costruisciDaStato(stato);
       aggiorna();
+    }
+
+    /* Il foglio in SOLA LETTURA (Valuta del docente, soluzione, «la mia dashboard»): si ricostruisce
+       dallo stato come fa wire(), ma senza avvisare il salvataggio. Chi lo chiama poi lo chiude con
+       lockEditor() e sol-mode (collaudo del 15/09). */
+    function mostraFoglio(stato){
+      if(!byIdC('ced-editor')) return false;
+      if(!stato) stato = statoSalvato();
+      MUTO = true;
+      try{ pulisci(); costruisciMenuRoot(); if(stato) costruisciDaStato(stato); aggiorna(); }
+      finally{ MUTO = false; }
+      return true;
     }
 
     /* ---------- raccolta per consegna e valutazione ---------- */
@@ -6266,7 +6281,6 @@
 
       return '' +
         '<div class="ced-sheet">' +
-          '<div class="ced-titolo"><b>Prospetto paga</b><span>Libro unico del lavoro</span></div>' +
           '<div class="ced-griglia ced-az">' + cellaT('Azienda', M(d.az['Ragione sociale'])) + cellaT('Sede', M(d.az['Comune'])) + cellaT('Periodo di retribuzione', M(periodo)) + '</div>' +
           '<div class="ced-griglia ced-dip">' + cellaT('Cognome e nome', M(d.dip['Cognome e nome'])) + cellaT('Qualifica', M(d.dip['Qualifica'])) +
             cellaT('Livello', M(d.dip['Livello'])) + cellaT('CCNL applicato', M(d.dip['CCNL applicato'])) + '</div>' +
@@ -6294,6 +6308,7 @@
       return '<table class="ced-sol-tab"><tbody>' + righe + '</tbody></table>';
     }
     function cortesiaSoluzioneCed(sol){
+      if(sol && sol.stato) return cortesiaCed(sol.stato);   /* stesso cedolino dell'alunno, coi dati giusti (15/09) */
       return '' +
         '<div class="ced-sheet">' +
           '<div style="margin-bottom:10px;"><span class="ced-l">Soluzione</span>' +
@@ -6303,6 +6318,14 @@
     }
     function mostraSoluzioneCed(sol, silenzioso){
       resetEditor();
+      if(sol && sol.stato){   /* la dashboard corretta: lo stesso foglio, compilato senza errori (15/09) */
+        var stS = byIdC('ced-stato'); if(stS) stS.setAttribute('data-stato', JSON.stringify(sol.stato));
+        mostraFoglio(sol.stato);
+        lockEditor();
+        byId('editor').classList.add('sol-mode');
+        if(!silenzioso) show('editor');
+        return;
+      }
       var bh = blocchiEl();
       if(bh){
         var bl = document.createElement('div');
@@ -6334,6 +6357,7 @@
       cortesia: cortesiaCed,
       cortesiaSoluzione: cortesiaSoluzioneCed,
       mostraSoluzione: mostraSoluzioneCed,
+      mostraFoglio: mostraFoglio,
       scorciatoie: scorciatoieDaStato   /* per la traccia nella Valuta del docente */
     };
   })();
@@ -6495,7 +6519,7 @@
     var sp = document.createElement('div'); sp.className = 'vc-spacer';
     if(VC.ct <= 1){ var pdf = document.createElement('button'); pdf.type = 'button'; pdf.className = 'vc-pdf'; pdf.textContent = 'Scarica PDF'; pdf.addEventListener('click', function(){ stampa('soluzione-view'); }); sp.appendChild(pdf); }
     var esci = document.createElement('button'); esci.type = 'button'; esci.className = 'vc-esci';
-    esci.textContent = (VC.mode === 'valuta') ? '← Torna alla dashboard' : ((VC.mode === 'docente') ? '← Torna ai nomi' : '← Torna ai compiti');
+    esci.textContent = (VC.mode === 'valuta') ? '← Torna alla dashboard' : ((VC.mode === 'docente') ? '← Torna ai nomi' : ((VC.mode === 'alunno-valuta') ? '← Indietro' : '← Torna ai compiti'));
     esci.addEventListener('click', function(){ if(VC.exitFn) VC.exitFn(); });
     sp.appendChild(esci); row.appendChild(sp); bar.appendChild(row);
     return bar;
@@ -6515,6 +6539,23 @@
     var ced = ed.querySelector('.cedolino');
     (ced || ed).appendChild(box);
   }
+  /* Lo stato del foglio (JSON) che sta dentro la fotografia della dashboard dell'alunno. */
+  function statoDaHtml(html){
+    if(!html) return null;
+    try{
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var st = doc.getElementById('ced-stato');
+      var x = st ? JSON.parse(st.getAttribute('data-stato') || 'null') : null;
+      return (x && x.ordine && x.ordine.length) ? x : null;
+    }catch(e){ return null; }
+  }
+  /* La soluzione dell'esercizio presa dall'archivio di adesso, non dalla fotografia della consegna. */
+  function soluzioneDi(f){
+    var id = f && f.id;
+    if(!id || typeof FATTURE === 'undefined' || !FATTURE) return null;
+    var a = FATTURE.find(function(y){ return y.id === id; });
+    return a ? a.soluzione : null;
+  }
   function vcGo(){
     var f = VC.fatture[VC.cf] || {};
     if(VC.ct === 4){ vcRenderValutazione(); window.scrollTo(0, 0); return; }
@@ -6525,10 +6566,14 @@
     var bannerNS = '<div class="cx-nonsvolta">Cedolino non compilato</div>';
     var skelCort = f.nonSvolta ? buildCortesia({ tipo:'cedolino', stato:null }) : '';
     var skelDash = (typeof PRISTINE_EDITOR !== 'undefined' && PRISTINE_EDITOR) ? PRISTINE_EDITOR : '';
+    /* Cedolino e dashboard si ridisegnano SEMPRE dallo stato del foglio e dalla soluzione in archivio,
+       non dalle fotografie salvate alla consegna: così vale l'impaginazione di oggi (collaudo 15/09). */
+    var statoAl = f.nonSvolta ? null : statoDaHtml(f.dashboardAlunno);
+    var solF = soluzioneDi(f);
     if(VC.ct <= 1){
       var page = byId('soluzione-page');
-      if(VC.ct === 0){ page.innerHTML = f.nonSvolta ? (bannerNS + skelCort) : (f.cortesiaAlunno || '<i>—</i>'); }
-      else { page.innerHTML = f.cortesiaCorretta || '<i>—</i>'; }
+      if(VC.ct === 0){ page.innerHTML = f.nonSvolta ? (bannerNS + skelCort) : (statoAl ? buildCortesia({ tipo:'cedolino', stato:statoAl }) : (f.cortesiaAlunno || '<i>—</i>')); }
+      else { page.innerHTML = (solF && solF.stato) ? CED.cortesiaSoluzione(solF) : (f.cortesiaCorretta || '<i>—</i>'); }
       var act = byId('sol-view-actions'); if(act){ act.innerHTML = ''; act.style.display = 'none'; }
       var ban = byId('sol-view-banner'); ban.className = ''; ban.style.cssText = 'margin-bottom:16px;'; ban.innerHTML = ''; ban.appendChild(vcBarNode());
       show('soluzione-view');
@@ -6536,7 +6581,15 @@
       var ed = byId('editor');
       if(VC.ct === 2){
         ed.innerHTML = f.nonSvolta ? (bannerNS + skelDash) : (f.dashboardAlunno || '');
-        if(!f.nonSvolta) tracciaScorciatoie(ed);
+        if(!f.nonSvolta){
+          if(statoAl && CED.mostraFoglio(statoAl)) lockEditor();   /* il suo foglio, com'era, disegnato come oggi */
+          tracciaScorciatoie(ed);
+        }
+      }
+      else if(solF && solF.stato){   /* il foglio compilato da chi non sbaglia niente */
+        ed.innerHTML = PRISTINE_EDITOR;
+        var stC = ed.querySelector('#ced-stato'); if(stC) stC.setAttribute('data-stato', JSON.stringify(solF.stato));
+        if(CED.mostraFoglio(solF.stato)) lockEditor();
       }
       else { ed.innerHTML = f.dashboardCorretta || ''; }
       ed.classList.add('sol-mode');
@@ -6731,6 +6784,48 @@
     if(!SB || !pin){ cb && cb(null, null); return; }
     try{ SB.from('ced_studenti').select('valutazione,valutazione_snapshot').eq('pin', pin).maybeSingle().then(function(res){ var d = (res && res.data) ? res.data : null; cb && cb(d ? d.valutazione : null, d ? d.valutazione_snapshot : null); }, function(){ cb && cb(null, null); }); }catch(e){ cb && cb(null, null); }
   }
+  /* La card del voto pubblicato: voto, data e commento del prof, e al tocco il dettaglio. */
+  function cartaValutazione(val, snap, exitFn){
+    var card = document.createElement('div'); card.className = 'val-card';
+    var dt = fmtDataIt(val.data);
+    var giud = (val.items || []).map(function(it){ return (it && it.giudizio) ? String(it.giudizio) : ''; }).filter(Boolean).join('\n\n');
+    card.innerHTML = '<div class="vc-voto">' + esc(String(val.voto_finale)) + '</div>'
+      + '<div style="text-align:left; min-width:0;"><div class="vc-txt-t">La tua valutazione' + (dt ? (' del ' + dt) : '') + '</div>'
+      + (giud ? '<div class="vc-giud">' + esc(giud) + '</div>' : '')
+      + '<div class="vc-txt-s">Tocca per vedere il dettaglio: il tuo cedolino e quello corretto</div></div>'
+      + '<div style="margin-left:auto; color:#3f6b52; font-size:22px;">&rsaquo;</div>';
+    card.addEventListener('click', function(){ apriValutazioneAlunno(val, snap, exitFn); });
+    return card;
+  }
+  /* Il voto pubblicato deve arrivare anche a chi sta sulla schermata «Verifica consegnata» (collaudo
+     del 15/09: prima compariva solo nella pagina dei compiti, e in verifica l'alunno non lo vedeva mai).
+     Si guarda subito e poi ogni 20 secondi, finche' l'alunno resta su quella schermata. */
+  var VAL_TIMER = null;
+  function cartaValutazioneBlocco(ritorno){
+    if(VAL_TIMER){ clearInterval(VAL_TIMER); VAL_TIMER = null; }
+    var host = byId('blocco-val');
+    if(!host){
+      var nm = byId('blocco-nome'); if(!nm) return;
+      host = document.createElement('div'); host.id = 'blocco-val'; host.style.marginTop = '20px';
+      nm.parentNode.insertBefore(host, nm.nextSibling);
+    }
+    host.innerHTML = '';
+    var pin = STATE.studente ? STATE.studente.pin : '';
+    if(!ritorno || !pin) return;
+    var titolo = byId('blocco-title') ? byId('blocco-title').textContent : '';
+    function ancoraQui(){ var b = byId('blocco'), t = byId('blocco-title'); return b && b.style.display !== 'none' && t && t.textContent === titolo; }
+    function prova(){
+      if(!ancoraQui()){ if(VAL_TIMER){ clearInterval(VAL_TIMER); VAL_TIMER = null; } return; }
+      cloudLeggiValutazione(pin, function(val, snap){
+        if(!ancoraQui() || !val || !val.pubblicata || !val.voto_finale) return;
+        if(VAL_TIMER){ clearInterval(VAL_TIMER); VAL_TIMER = null; }
+        host.innerHTML = '';
+        host.appendChild(cartaValutazione(val, snap, ritorno));
+      });
+    }
+    prova();
+    VAL_TIMER = setInterval(prova, 20000);
+  }
   // Vista ALUNNO della propria valutazione (sola lettura), aperta dalla card nella pagina compiti.
   function apriValutazioneAlunno(val, snap, exitFn){
     var fatture = (snap && Array.isArray(snap.fatture) && snap.fatture.length)
@@ -6899,12 +6994,7 @@
     if(pin0){ cloudLeggiValutazione(pin0, function(val, snap){
       if(!val || !val.pubblicata || !val.voto_finale) return;
       if(!byId('menu-fatture') || byId('menu-fatture').style.display === 'none') return;
-      var card = document.createElement('div'); card.className = 'val-card';
-      var dt = fmtDataIt(val.data);
-      card.innerHTML = '<div class="vc-voto">' + esc(String(val.voto_finale)) + '</div>'
-        + '<div><div class="vc-txt-t">Valutazione verifica' + (dt ? (' del ' + dt) : '') + '</div><div class="vc-txt-s">Tocca per vedere il dettaglio (cedolini e giudizi)</div></div>'
-        + '<div style="margin-left:auto; color:#3f6b52; font-size:22px;">&rsaquo;</div>';
-      card.addEventListener('click', function(){ apriValutazioneAlunno(val, snap, function(){ renderCompitiPicker(); show('menu-fatture'); }); });
+      var card = cartaValutazione(val, snap, function(){ renderCompitiPicker(); show('menu-fatture'); });
       var list = byId('menu-list'); if(list) list.insertBefore(card, list.firstChild);
     }); }
   }
