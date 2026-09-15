@@ -4813,10 +4813,11 @@
         cur.textContent = (sg === 1) ? '+' : '−';
         cur.className = 'cur ' + (sg === 1 ? 'p' : 'm');
       }
-      [['+','p','Si somma','Aumenta il totale'],['−','m','Si sottrae','Diminuisce il totale']].forEach(function(o){
+      /* niente riga grigia sotto: il «totale» a cui si riferiva non c'e' piu' (15/09) */
+      [['+','p','Si somma'],['−','m','Si sottrae']].forEach(function(o){
         var b = document.createElement('button');
         b.type='button';
-        b.innerHTML = '<span class="sg ' + o[1] + '">' + o[0] + '</span><span>' + o[2] + '<span class="d" style="display:block;font-size:12px;color:var(--muted);">' + o[3] + '</span></span>';
+        b.innerHTML = '<span class="sg ' + o[1] + '">' + o[0] + '</span><span>' + o[2] + '</span>';
         b.addEventListener('click', function(){ chiudi(); applica(o[1] === 'p' ? 1 : -1); aggiorna(); });
         scelte.appendChild(b);
       });
