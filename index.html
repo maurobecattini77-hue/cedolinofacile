@@ -572,6 +572,9 @@
 .cedolino .segno>.cur{width:42px; height:38px; border:1px solid var(--line2); border-radius:9px; background:var(--surface); color:var(--muted); font-size:19px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center;}
 .cedolino .segno>.cur.p{color:var(--plus); background:var(--plus-bg); border-color:var(--plus);}
 .cedolino .segno>.cur.m{color:var(--minus); background:var(--minus-bg); border-color:var(--minus);}
+.cedolino .segno>.cur.richiamo{animation:richiamo-segno .45s ease 3;}
+@keyframes richiamo-segno{50%{color:var(--minus); border-color:var(--minus); box-shadow:0 0 0 4px var(--minus-bg); transform:scale(1.1);}}
+.cedolino .imp input.attende-segno{opacity:.5; cursor:not-allowed;}
 .cedolino .scelte{position:fixed; z-index:400; top:0; left:0; background:var(--surface); border:1px solid var(--line2); border-radius:11px; box-shadow:0 14px 34px -14px rgba(0,0,0,.5); padding:5px; display:flex; flex-direction:column; gap:4px; min-width:210px;}
 .cedolino .scelte[hidden]{display:none;}
 .cedolino .scelte button{display:flex; align-items:center; gap:9px; border:none; background:transparent; border-radius:8px; padding:7px 9px; text-align:left; color:var(--ink); font-size:13.5px;}
@@ -4822,6 +4825,7 @@
         r._segno = sg;
         cur.textContent = (sg === 1) ? '+' : '−';
         cur.className = 'cur ' + (sg === 1 ? 'p' : 'm');
+        if(r._dopoSegno) r._dopoSegno();
       }
       /* niente riga grigia sotto: il «totale» a cui si riferiva non c'e' piu' (15/09) */
       [['+','p','Si somma'],['−','m','Si sottrae']].forEach(function(o){
@@ -4834,7 +4838,31 @@
       cur.addEventListener('click', function(){ apri(cur, scelte); });
       seg.appendChild(cur);
       tendineHost().appendChild(scelte);
-      return {el:seg, tendina:scelte, set:applica};
+      return {el:seg, tendina:scelte, set:applica, cur:cur};
+    }
+
+    /* Il segno prima di tutto (collaudo del 15/09: se l'e' scordato perfino il prof).
+       Finche' la riga non ha il segno, i suoi importi restano chiusi e, se ci si clicca
+       sopra, il ± lampeggia. Non suggerisce QUALE segno: obbliga solo a sceglierlo. */
+    function primaIlSegno(r, sg, caselle){
+      function richiama(){
+        sg.cur.classList.remove('richiamo');
+        void sg.cur.offsetWidth;   /* riparte l'animazione anche se era gia' partita */
+        sg.cur.classList.add('richiamo');
+      }
+      function stato(){
+        caselle.forEach(function(i){
+          i.readOnly = !r._segno;
+          i.classList.toggle('attende-segno', !r._segno);
+          if(r._segno) i.removeAttribute('title'); else i.title = 'Prima scegli il segno';
+        });
+      }
+      caselle.forEach(function(i){
+        i.addEventListener('mousedown', function(){ if(!r._segno) richiama(); });
+        i.addEventListener('focus', function(){ if(!r._segno) richiama(); });
+      });
+      r._dopoSegno = stato;
+      stato();
     }
 
     /* ---------- una riga della retribuzione ---------- */
@@ -4903,6 +4931,7 @@
 
       r.appendChild(seg); r.appendChild(vc); r.appendChild(imp); r.appendChild(ic);
       r._tendine = [scelte, vmenu, mpiu];
+      primaIlSegno(r, sg, [inp]);
 
       r._valore = function(){
         if(!r._segno) return 0;
@@ -5053,6 +5082,7 @@
 
       var inImp = cImp.querySelector('input'), inAli = cAli.querySelector('input'), inTot = cTot.querySelector('input');
       [cImp, cAli, cTot].forEach(function(c){ c.querySelector('input').addEventListener('input', aggiorna); });
+      primaIlSegno(r, sg, [inImp, inAli, inTot]);
 
       r._valore = function(){
         if(!r._segno) return 0;
@@ -5449,10 +5479,21 @@
       barra.appendChild(bconf); barra.appendChild(esito);
       corpo.appendChild(barra);
 
+      /* in fondo, il totale scritto chiaro: e' il numero da riportare nell'IRPEF netta (collaudo 15/09) */
+      var contoTot = null;
+      if(id === 'detr'){
+        contoTot = document.createElement('div');
+        contoTot.className = 'detr-conto';
+        contoTot.innerHTML = '<div class="cr ultima"><span class="l">Totale detrazioni</span><span class="v" data-totale-detr>0,00</span></div>';
+        corpo.appendChild(contoTot);
+      }
+
       r._valore = function(){
         var t = 0;
         elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ t += x._mese(); });
-        return r._confermato ? t : 0;
+        var v = r._confermato ? t : 0;
+        if(contoTot) contoTot.querySelector('[data-totale-detr]').textContent = euro(v);
+        return v;
       };
       r._senzaSegno = function(){ return false; };
       corpo.appendChild(r);
@@ -5530,6 +5571,7 @@
 
       var in1 = c1.querySelector('input'), in2 = c2.querySelector('input');
       [in1, in2].forEach(function(i){ i.addEventListener('input', aggiorna); });
+      primaIlSegno(r, sg, [in1, in2]);
 
       r._valore = function(){
         var a = leggiNumero(in1.value), b = leggiNumero(in2.value);
@@ -5606,6 +5648,7 @@
 
       r.appendChild(sg.el); r.appendChild(vc); r.appendChild(imp); r.appendChild(ic);
       r._tendine = [sg.tendina, vmenu];
+      primaIlSegno(r, sg, [inp]);
 
       r._valore = function(){
         if(!r._segno) return 0;
