@@ -1510,8 +1510,8 @@
     }catch(e){}
     // (17/09/2026) Qui c'era un AUTO-SBLOCCO: il battito del proprietario rimetteva 'in_corso' un alunno appena
     // segnato 'bloccato'. Risultato in classe: l'alunno vedeva «Accesso bloccato» e il docente lo vedeva «In corso»,
-    // SENZA il pulsante «Sblocca». Tolto: ora 'bloccato' resta finché lo sblocca il docente (regola della dashboard
-    // verifiche), e il dispositivo del proprietario si blocca anche lui (vedi startSessioneWatcher).
+    // SENZA il pulsante «Sblocca». Tolto: ora 'bloccato' resta finché lo sblocca il docente, mentre il proprietario
+    // continua a lavorare (vedi cloudCheckAccesso).
   }
   function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 10000); } // battito ogni 10s: la dashboard reagisce in fretta
   function stopPresenza(){ if(STATE.presenzaTimer){ clearInterval(STATE.presenzaTimer); STATE.presenzaTimer = null; } }
@@ -1649,13 +1649,16 @@
     }catch(e){ cb && cb(false, 'errore imprevisto'); }
   }
   // Blocco anti-doppio-accesso: controlla se l'alunno può entrare e aggiorna lo stato.
-  // LE REGOLE SONO QUELLE DELLA DASHBOARD VERIFICHE (17/09/2026), che in classe hanno sempre funzionato:
+  // LE REGOLE (17/09/2026, riprese da Fattura Facile come le vuole Mauro):
   //   - primo ingresso → «in corso»;
   //   - ricaricare la pagina (F5) NON è un nuovo ingresso: non passa di qui e non blocca mai;
-  //   - nuovo ingresso col PIN mentre è «in corso» (altro dispositivo, scheda chiusa e riaperta) → BLOCCATO,
-  //     SUBITO e sempre visibile al docente col suo «Sblocca». Niente più conti sulla presenza (i vecchi 45
+  //   - nuovo ingresso col PIN mentre è «in corso» (altro dispositivo, scheda chiusa e riaperta) → chi entra
+  //     viene BLOCCATO, e il docente lo vede SUBITO («Bloccato» col suo «Sblocca»). Chi stava già lavorando
+  //     NON viene toccato: continua il suo lavoro. Così, se un compagno entra col PIN di un altro, il docente
+  //     se ne accorge e il lavoro del vero alunno va avanti. Niente più conti sulla presenza (i vecchi 45
   //     secondi): decidevano a volte di bloccare senza dirlo al docente, e il pulsante «Sblocca» non c'era;
-  //   - «Sblocca» concede UN rientro;
+  //   - «Sblocca» fa entrare il dispositivo bloccato (uno solo) col lavoro salvato nel cloud; quello che era
+  //     dentro prima si chiude da solo («Sessione spostata»), così due dispositivi non scrivono insieme;
   //   - classe in ESERCITAZIONE → nessun blocco, si rientra sempre.
   function cloudCheckAccesso(pin, cb){
     if(!SB){ cb && cb({ allow:true }); return; }
@@ -1828,21 +1831,6 @@
     byId('topbar-info').innerHTML = '';
     mostraBloccoMsg('🔒', 'Sessione spostata', 'Questa verifica è stata aperta su un altro dispositivo, quindi qui è stata chiusa. Se è un errore, avvisa il prof.', '#8a6d3b');
   }
-  // Il PIN è stato segnato 'bloccato' mentre questo dispositivo ci lavorava. Prima metto al sicuro il lavoro
-  // (in locale e nel cloud: chi rientra dopo lo «Sblocca», da qui o da un altro dispositivo, lo ritrova), poi
-  // fermo tutto e mostro la schermata di blocco, che rientra da sola appena il docente sblocca.
-  function bloccaProprietario(){
-    if(STATE.sessioneChiusa) return; STATE.sessioneChiusa = true;
-    try{ if(byId('editor').style.display !== 'none') salvaLavoro(); }catch(e){}
-    try{ if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; } pushBozzaCloud(); }catch(e){}
-    stopSessioneWatcher(); stopAssegnazioneWatcher(); stopConsegnaWatcher(); stopAttesaWatcher();
-    stopPresenza();
-    try{ sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}   // un F5 non deve scavalcare il blocco
-    byId('topbar-info').innerHTML = '';
-    var bn = byId('blocco-nome'); if(bn && STATE.studente) bn.textContent = STATE.studente.cognome + ' ' + STATE.studente.nome;
-    mostraBloccoMsg('🔒', 'Accesso bloccato', 'Qualcuno è entrato col tuo PIN da un altro dispositivo. Il tuo lavoro è salvo: chiedi lo sblocco al docente.', '#b4472f');
-    startBloccoWatcher();
-  }
   /* ---------- Guardia della SESSIONE (lato alunno): vale su QUALSIASI schermata ----------
      Il docente ha resettato o ricaricato la classe? Allora nel cloud l'alunno torna 'non_iniziato' E resta
      SENZA assegnazione. Questa coppia significa una cosa sola: la verifica è stata azzerata. Il dispositivo
@@ -1864,18 +1852,9 @@
         // GETTONE: se il MIO gettone è confermato nel cloud ma ora ce n'è un ALTRO, sono stato sostituito → mi chiudo.
         if(sessioneSorpassata(s.sessione)){ terminaSessionePerAltroDispositivo(); return; }
         var st = s.stato || 'non_iniziato';
-        // BLOCCATO mentre lavoravo: qualcuno è entrato col mio PIN da un altro dispositivo (o da un'altra scheda).
-        // Come nella dashboard verifiche mi blocco anch'io, finché il docente non preme «Sblocca».
-        if(st === 'bloccato' && STATE.sessTokenConfirmed && !STATE.consegnata){
-          var pinB = STATE.studente.pin;
-          cloudClasseInEsercitazione(STATE.classeAlunno || (STATE.studente && STATE.studente.classe) || null, function(eserc){
-            if(!STATE.studente || STATE.studente.pin !== pinB) return;
-            // in esercitazione non si blocca nessuno: rimetto «in corso» e continuo a lavorare
-            if(eserc){ try{ SB.from('ced_studenti').update({ stato:'in_corso' }).eq('pin', pinB).eq('stato', 'bloccato').then(function(){}, function(){}); }catch(e){} return; }
-            bloccaProprietario();
-          });
-          return;
-        }
+        // 'bloccato' mentre lavoro = qualcuno ha provato a entrare col mio PIN. Io NON mi fermo: il blocco è
+        // per lui, e il docente lo vede. Se il docente lo sblocca, lui pianta il suo gettone e qui scatta il
+        // controllo qui sopra («Sessione spostata»).
         if(!STATE.sessArmed){ if(st !== 'non_iniziato') STATE.sessArmed = true; return; }
         if(st === 'non_iniziato' && !s.fattura_assegnata) terminaSessioneVerifica();
       }, function(){});
@@ -3933,7 +3912,13 @@
     // ma offro lo SBLOCCO (toglie il blocco SENZA riaprire il lavoro). Dopo lo sblocco torna "Consegnato" + Riammetti.
     if(allDone && stato === 'bloccato') return { cls:'st-done', txt:'Consegnato', done:true, on:false, corso:false, block:true };
     if(allDone) return { cls:'st-done', txt:'Consegnato', done:true, on:false, corso:false, block:false };
-    if(stato === 'bloccato') return { cls:'st-block', txt:'Bloccato', done:false, on:false, corso:false, block:true };
+    // Bloccato con l'alunno GIÀ DENTRO che lavora (il suo dispositivo batte ancora): qualcuno ha provato col suo
+    // PIN. Lo dico, e lo conto come collegato: così «Consegna» e «Consegna classe» passano dal suo dispositivo
+    // e salvano il lavoro vero, fino all'ultimo tasto.
+    if(stato === 'bloccato'){
+      var dentro = !!(s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 30000));
+      return { cls:'st-block', txt:(dentro ? 'Bloccato · doppio accesso' : 'Bloccato'), done:false, on:dentro, corso:dentro, block:true };
+    }
     // Segnato ASSENTE dal docente: lo dico al posto di «Non collegato», che qui sarebbe un'informazione inutile
     // (certo che non è collegato: non c'è). Sta DOPO «Consegnato»: chi ha consegnato resta consegnato, anche se
     // poi lo segni assente per sbaglio. Non conta fra i «Collegati» (on:false).
@@ -7023,24 +7008,9 @@
   function ripristinaAlunno(pin){
     cloudModalitaAlunno(pin, function(mode){
       if(mode === 'compiti'){ avviaCompitiACasa(); return; }
-      cloudLeggiContestoAlunno(pin, function(ctx){
-        // F5 non è un nuovo ingresso e non blocca. Ma se il PIN RISULTA GIÀ bloccato, il ricaricamento non deve
-        // scavalcare il blocco: si torna sulla schermata di blocco (in esercitazione il blocco non esiste).
-        if(ctx && ctx.stato === 'bloccato' && !ctx.consegnata){
-          cloudClasseInEsercitazione(ctx.classe, function(eserc){
-            if(eserc){
-              try{ SB.from('ced_studenti').update({ stato:'in_corso' }).eq('pin', pin).eq('stato', 'bloccato').then(function(){}, function(){}); }catch(e){}
-              avviaAlunnoConLista(ctx); return;
-            }
-            var bn = byId('blocco-nome'); if(bn && STATE.studente) bn.textContent = STATE.studente.cognome + ' ' + STATE.studente.nome;
-            try{ sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
-            mostraBloccoMsg('🔒', 'Accesso bloccato', 'Hai già effettuato l\'accesso in precedenza. Per continuare, chiedi lo sblocco al docente.', '#b4472f');
-            startBloccoWatcher();
-          });
-          return;
-        }
-        avviaAlunnoConLista(ctx);
-      });
+      // F5 lo fa solo il dispositivo che era già entrato (solo lui ha cf_studente_attivo): nessun controllo di
+      // blocco, anche se nel frattempo un altro ha provato col suo PIN e risulta «Bloccato».
+      cloudLeggiContestoAlunno(pin, avviaAlunnoConLista);
     });
   }
   /* ===================== COMPITI A CASA (modalità libera, senza blocco PIN) ===================== */
