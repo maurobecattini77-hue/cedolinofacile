@@ -872,7 +872,7 @@
     <button class="btn-ghost" id="btn-backup">Backup</button>
     <button class="btn-ghost" id="btn-ripristina">Ripristina</button>
     <input type="file" id="file-ripristina" accept=".json,application/json" style="display:none;" />
-    <button class="btn-red" id="btn-reset" style="margin-left:auto;">Reset classe</button>
+    <button class="btn-red" id="btn-reset" style="margin-left:auto;">Azzera esercizio</button>
   </div>
   <div class="toolbar-doc">
     <button class="btn-sospendi" id="btn-sospendi"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:7px;"><path d="M6 5h4v14h-4z"/><path d="M14 5h4v14h-4z"/></svg><span id="btn-sospendi-txt">Sospendi</span></button>
@@ -1551,11 +1551,12 @@
     try{ SB.from('ced_config').update({ assegnata_id:null, livello:null }).eq('id', 1).then(function(){}, function(){}); }catch(e){}
     try{ SB.from('ced_tentativi').delete().neq('modalita', 'compiti').gte('created_at', '2000-01-01').then(function(){}, function(){}); }catch(e){} // il Reset NON tocca l'archivio compiti a casa
   }
-  // Reset di UNA SOLA classe: azzera assegnazione e stato dei suoi alunni + cancella le sue consegne di VERIFICA.
-  // NON tocca le altre classi, né l'archivio fatture, né i compiti a casa. Il roster della classe resta.
-  // NB: il Reset NON tocca valutazione/valutazione_snapshot: manda la classe in COMPITI A CASA, ed è proprio lì
-  // che gli alunni entrano a vedere il VOTO PUBBLICATO (lo snapshot esiste apposta per sopravvivere al Reset che
-  // cancella le consegne). I voti si azzerano SOLO ricaricando la classe (Carica classe = nuova verifica).
+  // AZZERA ESERCIZIO di UNA SOLA classe: toglie l'assegnazione, azzera lo stato dei suoi alunni e cancella
+  // le sue consegne di VERIFICA. NON tocca le altre classi, né l'archivio cedolini, né i compiti a casa.
+  // La CLASSE RESTA: alunni, PIN e posto nella tendina non si toccano (classi permanenti, 17/09/2026).
+  // NB: non tocca nemmeno valutazione/valutazione_snapshot, così il VOTO PUBBLICATO resta visibile all'alunno
+  // quando entra nei compiti (lo snapshot esiste apposta per sopravvivere alla cancellazione delle consegne).
+  // I voti si azzerano SOLO ricaricando la classe dal file (Carica classe = tutto da capo).
   function cloudResetClasse(classe){
     if(!SB || !classe) return;
     try{ SB.from('ced_studenti').update({ ultimo_accesso:null, fattura_corrente:null, livello_corrente:null, fattura_assegnata:null, livello_assegnato:null, consegnata:false, stato:'non_iniziato', riammesso:false, bozza_corrente:null }).eq('classe', classe).then(function(){}, function(){}); }catch(e){}
@@ -1565,16 +1566,16 @@
       CLOUD_CONS[a.pin] = {};
     });
   }
-  // Marca/smarca una CLASSE come "modalità compiti a casa" (lista in ced_config.compiti_classi).
-  // Una classe in compiti: (a) i suoi alunni fanno i compiti anche col docente collegato; (b) è NASCOSTA
-  // dalla dashboard/tendina del docente (i suoi alunni sono "a casa"). Si riporta in dashboard con "Carica classe".
-  // Uso STATE.compitiClassi come copia locale (effetto immediato) e scrivo nel cloud.
+  // (17/09/2026) La vecchia «modalità compiti a casa» di classe (lista ced_config.compiti_classi) è ABOLITA:
+  // nascondeva la classe dalla dashboard, ed è il motivo per cui dopo un azzeramento la classe spariva.
+  // Adesso vale una regola sola, senza liste: chi non ha un esercizio assegnato fa i compiti (vedi
+  // cloudModalitaAlunno). Questa funzione resta solo per RIPULIRE la lista vecchia dai residui: toglie una
+  // classe, non ce la mette più. Il parametro `on` è ignorato apposta.
   function cloudSetModalitaCompiti(classe, on){
     if(!classe) return;
     var arr = (STATE.compitiClassi || []).slice();
     var i = arr.indexOf(classe);
-    if(on && i === -1) arr.push(classe);
-    if(!on && i !== -1) arr.splice(i, 1);
+    if(i !== -1) arr.splice(i, 1);
     STATE.compitiClassi = arr;
     if(SB){ try{ SB.from('ced_config').update({ compiti_classi: arr }).eq('id', 1).then(function(){}, function(){}); }catch(e){} }
   }
@@ -2650,8 +2651,9 @@
           SB.from('ced_config').select('compiti_classi').eq('id', 1).maybeSingle().then(function(res){
             var arr = (res && res.data && Array.isArray(res.data.compiti_classi)) ? res.data.compiti_classi.slice() : [];
             var i = arr.indexOf(classe);
-            if(vuoleCompiti && i === -1) arr.push(classe);
-            if(!vuoleCompiti && i !== -1) arr.splice(i, 1);
+            // Mai rimettere una classe fra le «nascoste», nemmeno se il file di backup è vecchio e lo dice:
+            // le classi ora sono permanenti. Dal ripristino si esce sempre con la classe in dashboard.
+            if(i !== -1) arr.splice(i, 1);
             STATE.compitiClassi = arr;
             SB.from('ced_config').update({ compiti_classi:arr }).eq('id', 1).then(function(){}, function(){});
 
@@ -2679,7 +2681,7 @@
             showAlert('Classe ' + (classe || '—') + ' ripristinata: ' + studenti.length + ' alunni e ' + tentativi.length
               + (tentativi.length === 1 ? ' consegna rimessi com\'erano.' : ' consegne rimessi com\'erano.')
               + (votiSalvati ? (' ' + votiSalvati + (votiSalvati === 1 ? ' voto messo dopo il backup è stato CONSERVATO.' : ' voti messi dopo il backup sono stati CONSERVATI.')) : '')
-              + (vuoleCompiti ? ' La classe torna in COMPITI A CASA.' : ' La classe torna in dashboard.')
+              + ' La classe è in dashboard.'
               + ' Le altre classi e l\'archivio dei cedolini non sono stati toccati.');
             refreshCloudStud(function(){ refreshConsegne(function(){ if(typeof renderDocente === 'function') renderDocente(); }); });
           }, function(){ showAlert('Ripristino a metà: gli alunni sono tornati, ma non ho potuto aggiornare la modalità della classe.'); });
@@ -2788,17 +2790,22 @@
         if(!r1 || r1.error){ cb && cb(null); return; }
         var per = r1.data ? r1.data : null;
         var cl = per ? per.classe : null;
-        SB.from('ced_config').select('docente_heartbeat,compiti_classi,sospese_classi').eq('id', 1).maybeSingle().then(function(r2){
+        SB.from('ced_config').select('docente_heartbeat,classe_attiva,sospese_classi').eq('id', 1).maybeSingle().then(function(r2){
           if(!r2 || r2.error){ cb && cb(null); return; } // idem: senza risposta non posso dedurre l'assenza del docente
           var cfg = r2.data ? r2.data : null;
           var sospese = (cfg && Array.isArray(cfg.sospese_classi)) ? cfg.sospese_classi : [];
-          if(cl && sospese.indexOf(cl) !== -1){ cb && cb('compiti'); return; } // VERIFICA SOSPESA dal docente → compiti (l'assegnazione resta, ma è chiusa a chiave)
-          var compitiClassi = (cfg && Array.isArray(cfg.compiti_classi)) ? cfg.compiti_classi : [];
-          if(cl && compitiClassi.indexOf(cl) !== -1){ cb && cb('compiti'); return; } // classe messa in modalità compiti dal Reset → compiti SEMPRE
+          if(cl && sospese.indexOf(cl) !== -1){ cb && cb('compiti'); return; } // SOSPESA dal docente → compiti (l'assegnazione resta, ma è chiusa a chiave)
           if(per && per.assente){ cb && cb('compiti'); return; } // segnato ASSENTE dal docente → vede i compiti, senza nessun messaggio strano
-          if(per && per.fattura_assegnata){ cb && cb(null); return; } // ha un'assegnazione personale → normale (verifica)
+          if(per && per.fattura_assegnata){ cb && cb(null); return; } // ha un'assegnazione personale → normale (verifica o esercitazione)
+          // NIENTE ESERCIZIO ASSEGNATO: qui prima si guardava solo se il docente era collegato, e chiunque
+          // entrasse mentre lui era in dashboard restava piantato su «In attesa». Con le classi permanenti
+          // sarebbe successo di continuo: undici classi sempre vive, e il ragazzo della 5F che apre da casa
+          // mentre il prof è in aula con la 5L vedrebbe l'attesa invece dei compiti. Ora l'attesa vale SOLO
+          // per la classe che il docente ha aperto in quel momento (classe_attiva, scritta dal suo battito):
+          // sono i ragazzi in aula, davanti a lui, che aspettano l'assegnazione. Tutti gli altri: compiti.
           var hb = (cfg && cfg.docente_heartbeat) ? (Date.now() - new Date(cfg.docente_heartbeat).getTime()) : Infinity;
-          cb && cb((hb < 60000) ? null : 'compiti'); // altrimenti: docente presente → "In attesa"; assente → compiti
+          var attiva = (cfg && cfg.classe_attiva) ? cfg.classe_attiva : null;
+          cb && cb((hb < 60000 && cl && attiva === cl) ? null : 'compiti');
         }, function(){ cb && cb(null); });
       }, function(){ cb && cb(null); });
     }catch(e){ cb && cb(null); }
@@ -2848,11 +2855,13 @@
     if(t1)t1.textContent=nColl; if(t2)t2.textContent=nCorso; if(t3)t3.textContent=nDone;
   }
   // "Battito" di presenza del docente: scritto SOLO se ha una classe caricata. Serve all'alunno per capire
-  // se è in classe (docente presente → "In attesa") o a casa (docente assente → sceglie i compiti da solo).
+  // se è in classe (docente presente sulla SUA classe → "In attesa") o no (→ sceglie i compiti da solo).
+  // Insieme all'orario scrivo QUALE classe ho aperto: senza quello l'attesa colpirebbe tutte le classi
+  // insieme (vedi cloudModalitaAlunno).
   function cloudDocenteHeartbeat(){
     if(!SB) return;
     if(!(typeof CLASSE!=='undefined' && CLASSE && CLASSE.alunni && CLASSE.alunni.length)) return;
-    try{ SB.from('ced_config').update({ docente_heartbeat:new Date().toISOString() }).eq('id', 1).then(function(){}, function(){}); }catch(e){}
+    try{ SB.from('ced_config').update({ docente_heartbeat:new Date().toISOString(), classe_attiva:(CLASSE.classe || null) }).eq('id', 1).then(function(){}, function(){}); }catch(e){}
   }
   function startCollegatiTimer(){
     stopCollegatiTimer();
@@ -4035,13 +4044,15 @@
   }
   /* ---------- MULTI-CLASSE: elenco classi dal cloud + classe attiva ---------- */
   var CLASSES = [];
+  // CLASSI PERMANENTI (17/09/2026, deciso da Mauro). Nella tendina ci sono SEMPRE tutte le classi che
+  // stanno nel cloud: si caricano a settembre e restano lì tutto l'anno. Prima le classi «in compiti a casa»
+  // venivano nascoste, e il Reset ce le mandava: risultato, la classe spariva dalla dashboard e non c'era
+  // più modo di ritrovarla né di cancellarla. Una classe se ne va solo quando la si elimina davvero.
   function buildClassiDaCloud(){
     var m = {};
-    var nascoste = STATE.compitiClassi || []; // le classi "in compiti" sono NASCOSTE dalla dashboard (alunni a casa)
     Object.keys(CLOUD_STUD || {}).forEach(function(pin){
       var s = CLOUD_STUD[pin]; var c = (s && s.classe) ? s.classe : '';
       if(!c) return;
-      if(nascoste.indexOf(c) !== -1) return; // classe in modalità compiti → non compare nella tendina
       if(!m[c]) m[c] = { classe:c, alunni:[] };
       m[c].alunni.push({ pin:s.pin, nome:s.nome||'', cognome:s.cognome||'' });
     });
@@ -7559,7 +7570,7 @@
   byId('btn-reset').addEventListener('click', function(){
     var cl = (CLASSE && CLASSE.classe) || STATE.classeAttiva || '';
     if(!cl){ showAlert('Nessuna classe selezionata da azzerare. Carica o scegli una classe.'); return; }
-    showConfirm('Resettare la classe ' + cl + '? Passerà ai COMPITI A CASA (i suoi alunni, col PIN, faranno i compiti) e uscirà dalla dashboard.\n\n🛟 Prima di azzerare preparo un backup di sicurezza di questa classe (con le verifiche consegnate), e ti chiederò di confermare che il file è stato salvato.\n\n⚠ Le verifiche consegnate vengono poi CANCELLATE dal cloud (restano solo nel file di backup). I voti già messi restano (gli alunni li vedono nei compiti). I compiti a casa e le altre classi non si toccano.', function(){
+    showConfirm('Azzerare l\'esercizio della ' + cl + '?\n\nLA CLASSE RESTA QUI, nella tendina, pronta per la prossima volta: si cancella solo il lavoro in corso, non la classe.\n\n🛟 Prima di azzerare preparo un backup di sicurezza di questa classe (con le consegne e i compiti), e ti chiederò di confermare che il file è stato salvato.\n\n⚠ Vengono cancellati: il cedolino assegnato, le consegne di questa verifica e le bozze. I voti già messi restano. I compiti a casa e le altre classi non si toccano.', function(){
       // BACKUP AUTOMATICO DI SICUREZZA prima di cancellare le consegne. Se fallisce, NON resetto (niente perdita di dati).
       backupClasse(function(ok){
         if(!ok){
@@ -7574,7 +7585,10 @@
         // notte, verifiche gia' cancellate. Ora l'unico che puo' confermare che il file esiste sei tu.
         showConfirm('🛟 BACKUP PRONTO: «backup_' + cl + '_' + cf_dateStamp() + '.json».\n\nControlla ORA che sia nella cartella Download. Se il browser ti ha chiesto dove salvarlo, salvalo adesso (la finestra potrebbe essere dietro a questa).\n\nPremi OK SOLO se il file c\'è davvero: subito dopo le verifiche consegnate della ' + cl + ' verranno cancellate dal cloud e resteranno solo in quel file.\n\nSe non lo trovi, premi Annulla: non verrà cancellato niente.', function(){
         cloudResetClasse(cl);
-        cloudSetModalitaCompiti(cl, true); // dopo il Reset la classe passa in modalità compiti a casa
+        // (17/09/2026) Qui c'era «cloudSetModalitaCompiti(cl, true)»: azzerando, la classe veniva spedita
+        // ai compiti a casa e SPARIVA dalla dashboard. Era il difetto grosso: fra una verifica e l'altra
+        // la classe se ne andava e bisognava ricaricare il file. Ora l'azzeramento tocca solo l'esercizio;
+        // la classe resta dov'è. Gli alunni, non avendo più niente di assegnato, vedono i compiti da soli.
         STATE.assegnate = []; STATE.assegnataId = null;
         try{
           localStorage.removeItem('cf_assegnata'); localStorage.removeItem('cf_livello'); sessionStorage.removeItem('cf_studente_attivo');
@@ -7585,9 +7599,9 @@
           });
         }catch(e){}
         renderDocente();
-        showAlert('Classe ' + cl + ' resettata. Le verifiche consegnate ora vivono SOLO nel file di backup che hai salvato: tienilo da parte finché non hai messo i voti. La classe è passata ai COMPITI A CASA. Per rifarci una verifica, ricaricala con «Carica classe».');
+        showAlert('Esercizio della ' + cl + ' azzerato. Le consegne ora vivono SOLO nel file di backup che hai salvato: tienilo da parte finché non hai messo i voti.\n\nLa classe è rimasta qui, con i suoi alunni e i suoi PIN: per la prossima prova ti basta assegnare un altro cedolino. Intanto, col PIN, i ragazzi fanno i compiti.');
         }, function(){   // Annulla sulla conferma del backup: non si tocca NIENTE
-          showAlert('Reset ANNULLATO: non è stato cancellato niente. Le verifiche della ' + cl + ' sono ancora tutte nel cloud.\n\nSe il backup non è stato salvato, controlla le impostazioni di download del browser (o la finestra «Salva con nome» rimasta aperta) e riprova.');
+          showAlert('Azzeramento ANNULLATO: non è stato cancellato niente. Le consegne della ' + cl + ' sono ancora tutte nel cloud.\n\nSe il backup non è stato salvato, controlla le impostazioni di download del browser (o la finestra «Salva con nome» rimasta aperta) e riprova.');
         });
       }, true); // true = silenzioso: i messaggi li do io qui
     });
