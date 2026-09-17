@@ -1501,10 +1501,8 @@
   function cloudPresenza(){
     if(!SB || !STATE.studente || !STATE.proprietario) return;   // se non sei il proprietario, non scrivi
     try{
-      var adesso = new Date().toISOString();
       SB.from('ced_studenti').update({
-        ultimo_accesso:adesso,
-        ultima_attivita:adesso,   // a differenza di ultimo_accesso NON si cancella chiudendo la pagina: dice QUANDO ha lavorato l'ultima volta
+        ultimo_accesso:new Date().toISOString(),
         fattura_corrente:(STATE.assegnataId||null),
         livello_corrente:(typeof LIVELLO!=='undefined' ? String(LIVELLO) : null),
         consegnata:!!STATE.consegnata
@@ -1661,19 +1659,14 @@
   //     secondi): decidevano a volte di bloccare senza dirlo al docente, e il pulsante «Sblocca» non c'era;
   //   - «Sblocca» fa entrare il dispositivo bloccato (uno solo) col lavoro salvato nel cloud; quello che era
   //     dentro prima si chiude da solo («Sessione spostata»), così due dispositivi non scrivono insieme;
-  //   - il GIORNO DOPO si rientra senza «Sblocca», da qualsiasi dispositivo (conta ultima_attivita);
   //   - classe in ESERCITAZIONE → nessun blocco, si rientra sempre.
   function cloudCheckAccesso(pin, cb){
     if(!SB){ cb && cb({ allow:true }); return; }
     STATE.riammesso = false; // sessione pulita: si accende solo se il cloud dice "riammesso"
     try{
-      SB.from('ced_studenti').select('stato,riammesso,ultimo_accesso,consegnata,classe,ultima_attivita').eq('pin', pin).maybeSingle().then(function(res){
+      SB.from('ced_studenti').select('stato,riammesso,ultimo_accesso,consegnata,classe').eq('pin', pin).maybeSingle().then(function(res){
         var s = (res && res.data) ? res.data : null;
         var stato = s ? (s.stato || 'non_iniziato') : 'non_iniziato';
-        // GIORNO DOPO: l'ultima volta che questo PIN ha lavorato era un ALTRO giorno (o non lo sappiamo: righe
-        // di prima del 17/09/2026). Allora nessuno sta lavorando adesso con questo PIN: è l'alunno che riprende
-        // la verifica, magari da un altro dispositivo. Entra senza «Sblocca» e ritrova il lavoro dal cloud.
-        var giornoDopo = !s || !s.ultima_attivita || (new Date(s.ultima_attivita).toDateString() !== new Date().toDateString());
         // (1) Sblocco/riammissione del docente: lo può prendere UN dispositivo SOLO (claim ATOMICO su riammesso):
         //     il primo che lo "gira" a false vince, gli altri restano bloccati. Niente più "si sbloccano tutti".
         //     ATTENZIONE: se la verifica era GIÀ CONSEGNATA (consegnata=true) è un puro SBLOCCO, NON una riammissione:
@@ -1709,8 +1702,8 @@
             cb && cb({ allow:true }); return;
           }
           // (4) Era GIÀ dentro (in corso) o già bloccato → nuovo ingresso = BLOCCATO, e il docente lo vede subito.
-          if((stato === 'in_corso' || stato === 'bloccato') && !giornoDopo){ blocca(); return; }
-          // (5) Primo ingresso (o ripresa il giorno dopo) → entra e diventa il proprietario. La scrittura è CONDIZIONATA allo stato appena
+          if(stato === 'in_corso' || stato === 'bloccato'){ blocca(); return; }
+          // (5) Primo ingresso → entra e diventa il proprietario. La scrittura è CONDIZIONATA allo stato appena
           //     letto: se due ingressi arrivano nello stesso istante (due dispositivi), passa solo il primo e
           //     l'altro viene bloccato, invece di entrare tutti e due.
           SB.from('ced_studenti').update({ stato:'in_corso' }).eq('pin', pin).eq('stato', stato).select('pin').then(function(r3){
