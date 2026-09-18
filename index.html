@@ -1147,7 +1147,25 @@
 
   /* ================= Cloud (Supabase) — passo 1a ================= */
   var SB = null;
-  try{ if(window.supabase){ SB = window.supabase.createClient('https://zwuutlrafdmfqexbnohc.supabase.co', 'sb_publishable_6oCmDuDh_8ibf-p4ZAcfZg_muXXuO8N'); } }catch(e){}
+  var SB_URL = 'https://zwuutlrafdmfqexbnohc.supabase.co';
+  var SB_KEY = 'sb_publishable_6oCmDuDh_8ibf-p4ZAcfZg_muXXuO8N';
+  try{ if(window.supabase){ SB = window.supabase.createClient(SB_URL, SB_KEY); } }catch(e){}
+  /* MESSAGGIO CHE DEVE PARTIRE ANCHE SE IL TELEFONO CONGELA LA PAGINA (18/09/2026).
+     Quando l'alunno abbassa la scheda, passa a un'altra app o blocca lo schermo, Android congela la pagina
+     nel giro di un istante: la richiesta normale del cloud viene troncata a meta' e non arriva mai. E' per
+     questo che l'app «in secondo piano» finiva lo stesso in «Non collegato» dopo 40 secondi: il telefono
+     non faceva in tempo a dire «sono ancora qui, solo dietro». `keepalive` e' la promessa del browser di
+     spedire comunque quel messaggio, anche a pagina congelata o chiusa. Vale per due soli messaggi, brevi:
+     «sono passato in secondo piano» e «ho chiuso». */
+  function rpcSubito(nome, corpo){
+    try{
+      return fetch(SB_URL + '/rest/v1/rpc/' + nome, {
+        method:'POST', keepalive:true, mode:'cors', cache:'no-store',
+        headers:{ 'Content-Type':'application/json', 'apikey':SB_KEY, 'Authorization':'Bearer ' + SB_KEY },
+        body: JSON.stringify(corpo)
+      }).catch(function(){});
+    }catch(e){ return null; }
+  }
   // cb(ok, errore): «Carica classe» e' l'atto che mette gli alunni NEL CLOUD. Se fallisce, loro col PIN
   // non entrano proprio (per il sistema non esistono), quindi l'esito non si puo' ignorare: prima l'app
   // diceva «Classe caricata: 10 alunni» anche quando il cloud non aveva ricevuto niente, e te ne accorgevi
@@ -2763,11 +2781,35 @@
   try{ window.addEventListener('pagehide', function(){ if(STATE.studente){ try{ if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; } pushBozzaCloud(); }catch(e){} } }); }catch(e){}
   function riprendiPresenza(){ if(STATE.studente && STATE.proprietario) startPresenza(); }
   try{ window.addEventListener('pageshow', riprendiPresenza); }catch(e){}
+  /* Ultimo istante prima che il telefono congeli la pagina ('freeze'), e primo istante dopo il risveglio
+     ('resume'): sono i due momenti in cui Android decide se questa app «c'e' ancora». Al congelamento ridico
+     che sono in secondo piano (messaggio keepalive, l'unico che riesce a partire); al risveglio ribatto subito,
+     cosi' nella dashboard l'alunno non sfarfalla mai. */
+  try{ document.addEventListener('freeze', function(){
+    if(STATE.studente && STATE.proprietario){
+      rpcSubito('cf_battito', {
+        p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
+        p_fattura: (STATE.assegnataId || null),
+        p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
+        p_consegnata: !!STATE.consegnata, p_sfondo: true
+      });
+    }
+  }); }catch(e){}
+  try{ document.addEventListener('resume', riprendiPresenza); }catch(e){}
   try{ document.addEventListener('visibilitychange', function(){
     if(document.visibilityState === 'visible'){ riprendiPresenza(); return; }
-    // va in secondo piano: lo dico subito, cosi' il docente continua a vederlo collegato anche se il
-    // telefono congela i battiti
-    if(STATE.studente && STATE.proprietario) cloudPresenza();
+    /* Va in secondo piano: lo dico SUBITO e con il messaggio che parte comunque (rpcSubito), perche' un attimo
+       dopo il telefono congela la pagina e il battito normale morirebbe per strada. E' questo messaggio che
+       tiene l'alunno «Collegato» nella dashboard mentre ha la scheda abbassata o lo schermo spento: senza,
+       dopo 40 secondi risultava «Non collegato» pur avendo l'app aperta (Mauro, 18/09/2026). */
+    if(STATE.studente && STATE.proprietario){
+      rpcSubito('cf_battito', {
+        p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
+        p_fattura: (STATE.assegnataId || null),
+        p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
+        p_consegnata: !!STATE.consegnata, p_sfondo: true
+      });
+    }
   }); }catch(e){}
   /* CHIUSURA VERA della pagina (la X, non lo schermo che si spegne): lo dico al cloud, cosi' nella
      dashboard compare «Non collegato» subito. `persisted` distingue la chiusura dal semplice passaggio in
@@ -2775,7 +2817,9 @@
   try{ window.addEventListener('pagehide', function(ev){
     if(ev && ev.persisted) return;                       // va solo in secondo piano: non e' una chiusura
     if(STATE.studente && STATE.proprietario){
-      try{ SB.rpc('cf_esci', { p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo() }).then(function(){}, function(){}); }catch(e){}
+      // Con la pagina che sta morendo la richiesta normale spesso non parte: qui serve il messaggio keepalive,
+      // se no la chiusura non arriva al cloud e la dashboard resta a guardare un fantasma.
+      rpcSubito('cf_esci', { p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo() });
     }
   }); }catch(e){}
   function cloudCollegati(cb){
@@ -4104,14 +4148,16 @@
     return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false };
   }
   /* «Collegato» vuol dire: l'app e' ancora aperta su quel dispositivo. Il battito fresco lo dice di sicuro;
-     se invece l'app e' passata in secondo piano (scheda abbassata, schermo spento) il telefono congela i
-     battiti, ma l'app e' aperta lo stesso e per Mauro quell'alunno E' collegato: vale mezz'ora. Quando la
-     pagina viene chiusa davvero, l'app avvisa il cloud e qui si vede «Non collegato» nel giro di un attimo. */
+     se invece l'app e' passata in secondo piano (scheda abbassata, schermo spento, un'altra app davanti) il
+     telefono congela i battiti, ma l'app e' aperta lo stesso e per Mauro quell'alunno E' COLLEGATO: resta
+     collegato finche' non chiude davvero (tetto di sicurezza 3 ore, una mattinata intera di lezione — la stessa
+     misura che usa la porta cf_e_attivo nel cloud). Quando la pagina viene chiusa davvero, l'app avvisa il
+     cloud e qui si vede «Non collegato» nel giro di un attimo. */
   function attaccatoAllApp(s){
     if(!s || !s.ultimo_accesso) return false;
     var eta = Date.now() - new Date(s.ultimo_accesso).getTime();
     if(eta < 40000) return true;
-    return !!(s.sfondo && eta < 30 * 60 * 1000);
+    return !!(s.sfondo && eta < 3 * 60 * 60 * 1000);
   }
   // Quale azione mostrare nella colonna "Azioni" per un alunno.
   function wantAz(st){ return st.block ? 'sblocca' : (st.done ? 'riammetti' : ((st.on || st.part) ? 'consegna' : 'none')); }
