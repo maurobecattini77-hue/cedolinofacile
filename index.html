@@ -4157,11 +4157,44 @@
     if(!s || !s.ultimo_accesso) return false;
     var eta = Date.now() - new Date(s.ultimo_accesso).getTime();
     if(eta < 40000) return true;
-    return !!(s.sfondo && eta < 3 * 60 * 60 * 1000);
+    // App aperta ma dietro: il telefono l'ha detto e poi Android l'ha congelata. Vale DIECI MINUTI.
+    // Non di piu': se l'alunno chiude l'app mentre e' gia' dietro, il telefono non riesce piu' a dire niente
+    // (pagina congelata = muta), e senza questo limite resterebbe «Collegato» per ore pur non essendoci.
+    return !!(s.sfondo && eta < 10 * 60 * 1000);
   }
   // Quale azione mostrare nella colonna "Azioni" per un alunno.
   function wantAz(st){ return st.block ? 'sblocca' : (st.done ? 'riammetti' : ((st.on || st.part) ? 'consegna' : 'none')); }
+  /* «Sblocca» accanto a «Consegna» (18/09/2026, sera). Serve per il caso che il cloud non puo' indovinare:
+     l'alunno ha chiuso l'app mentre era gia' in secondo piano, il telefono non ha potuto dire niente e la riga
+     resta «In corso» con nessuno dentro. Un clic e quella riga torna libera. Chiede conferma perche' se
+     l'alunno STA lavorando davvero gli sposta la sessione e lui deve rientrare col PIN. */
+  function bottoneSbloccaSempre(a){
+    var b = document.createElement('button');
+    b.className = 'btn-sblocca'; b.textContent = '🔓 Sblocca';
+    b.title = "Libera questo PIN: usalo se risulta collegato ma non c’è nessuno, o per farlo rientrare da un altro dispositivo";
+    b.addEventListener('click', function(){
+      showConfirm(a.cognome + ' ' + a.nome + ' risulta collegato. Lo libero?' + String.fromCharCode(10,10)
+        + "Serve quando ha chiuso l’app e la riga resta «In corso», o per farlo rientrare da un altro dispositivo: il suo lavoro resta salvato."
+        + String.fromCharCode(10) + 'Se invece sta lavorando davvero, il suo dispositivo si chiude e dovrà rientrare col PIN.', function(){
+        cloudRiammetti(a.pin, false);
+        refreshCloudStud(function(){ refreshConsegne(renderDocente); });
+      });
+    });
+    return b;
+  }
   function buildAzButton(want, a){
+    if(want === 'none') return null;
+    if(want === 'consegna'){
+      // due pulsanti nella stessa casella: «Consegna» e, accanto, «Sblocca».
+      var box = document.createElement('span');
+      box.style.display = 'inline-flex'; box.style.gap = '6px'; box.style.alignItems = 'center'; box.style.flexWrap = 'wrap';
+      box.appendChild(buildAzButtonUno('consegna', a));
+      box.appendChild(bottoneSbloccaSempre(a));
+      return box;
+    }
+    return buildAzButtonUno(want, a);
+  }
+  function buildAzButtonUno(want, a){
     if(want === 'none') return null;
     var b = document.createElement('button');
     if(want === 'sblocca'){
