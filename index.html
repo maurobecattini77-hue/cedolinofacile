@@ -4151,20 +4151,18 @@
     return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false,
              haSessione:(stato === 'in_corso' || stato === 'bloccato') };
   }
-  /* «Collegato» vuol dire: l'app e' ancora aperta su quel dispositivo. Il battito fresco lo dice di sicuro;
-     se invece l'app e' passata in secondo piano (scheda abbassata, schermo spento, un'altra app davanti) il
-     telefono congela i battiti, ma l'app e' aperta lo stesso e per Mauro quell'alunno E' COLLEGATO: resta
-     collegato finche' non chiude davvero (tetto di sicurezza 3 ore, una mattinata intera di lezione — la stessa
-     misura che usa la porta cf_e_attivo nel cloud). Quando la pagina viene chiusa davvero, l'app avvisa il
-     cloud e qui si vede «Non collegato» nel giro di un attimo. */
+  /* UNA REGOLA SOLA, voluta da Mauro il 18/09/2026 sera dopo tre giri di prove: «Collegato» vuol dire che
+     l'app sta parlando col cloud ADESSO. Niente eccezioni per l'app in secondo piano, niente «dipende da come
+     hai chiuso»: se l'app smette di parlare, entro un minuto e mezzo la riga diventa «Non collegato».
+     Sue parole: «voglio una cosa deterministica, devo sapere perfettamente quello che succede».
+     I 90 secondi (e non 40) servono perche' un'app lasciata dietro batte piu' piano — il telefono e il computer
+     rallentano i suoi tempi a un battito al minuto — e un alunno che va un attimo in bagno con lo schermo
+     spento non deve sparire dalla dashboard. Quando l'app viene chiusa mentre e' viva lo dice comunque
+     (cf_esci) e la riga si spegne subito. La colonna `sfondo` resta scritta, ma NON allunga piu' la presenza:
+     serve solo a capire, leggendo il database, se l'ultimo segnale arrivava da un'app in secondo piano. */
   function attaccatoAllApp(s){
     if(!s || !s.ultimo_accesso) return false;
-    var eta = Date.now() - new Date(s.ultimo_accesso).getTime();
-    if(eta < 40000) return true;
-    // App aperta ma dietro: il telefono l'ha detto e poi Android l'ha congelata. Vale DIECI MINUTI.
-    // Non di piu': se l'alunno chiude l'app mentre e' gia' dietro, il telefono non riesce piu' a dire niente
-    // (pagina congelata = muta), e senza questo limite resterebbe «Collegato» per ore pur non essendoci.
-    return !!(s.sfondo && eta < 10 * 60 * 1000);
+    return (Date.now() - new Date(s.ultimo_accesso).getTime()) < 90000;
   }
   // Quale azione mostrare nella colonna "Azioni" per un alunno.
   /* UN PULSANTE SOLO, «Libera PIN», che si regola da se' (18/09/2026 sera, deciso da Mauro dopo averne provati
