@@ -2761,6 +2761,21 @@
     }catch(e){ cb && cb([]); }
   }
   var CLOUD_STUD = {};
+  /* Il riconoscimento del docente e' caduto? Lo dico, invece di lasciare la dashboard muta. */
+  var AVVISO_SESSIONE = false;
+  function controllaSessioneDocente(){
+    if(!SB || !SB.auth || AVVISO_SESSIONE) return;
+    try{
+      SB.auth.getSession().then(function(r){
+        if(r && r.data && r.data.session) return;   // il riconoscimento c'e': era un vuoto vero
+        AVVISO_SESSIONE = true;
+        stopCollegatiTimer();
+        showAlert('Il collegamento da docente è scaduto: la dashboard non riesce più a leggere i dati.' + String.fromCharCode(10,10) + 'Premi OK e rientra con la tua password: gli alunni intanto continuano a lavorare, non si perde niente.');
+        goGate();
+        AVVISO_SESSIONE = false;
+      }, function(){});
+    }catch(e){}
+  }
   function refreshCloudStud(cb){
     if(!SB){ cb && cb(); return; }
     try{
@@ -2770,7 +2785,10 @@
         // scriveva «Nessuna classe caricata» e cancellava pure cf_classe dal browser. Ogni 4 secondi.
         // Ora, se il cloud non risponde, tengo l'ultima fotografia buona e riprovo al giro dopo.
         if(!res || res.error){ cb && cb(); return; }
-        CLOUD_STUD = {}; ((res.data) || []).forEach(function(s){ CLOUD_STUD[s.pin] = s; });
+        var righe = (res.data) || [];
+        // Zero alunni mentre ne stavamo mostrando = quasi sempre riconoscimento scaduto, non classe vuota.
+        if(!righe.length && Object.keys(CLOUD_STUD || {}).length){ controllaSessioneDocente(); cb && cb(); return; }
+        CLOUD_STUD = {}; righe.forEach(function(s){ CLOUD_STUD[s.pin] = s; });
         STATE.cloudStudCaricato = true;   // da ora "nessuna classe" e' una risposta vera, non un "non lo so"
         cb && cb();
       }, function(){ cb && cb(); });
@@ -3981,8 +3999,12 @@
     // non deve far sparire dalla dashboard l'alunno vero, che sta lavorando.
     if(STATE.studente){ cloudClearPresenzaSeMia(STATE.studente.pin); STATE.studente = null; }
     STATE.proprietario = false;
+    var eraDocente = false;
+    try{ eraDocente = (sessionStorage.getItem('cf_docente_attivo') === '1'); }catch(e){}
     try{ sessionStorage.removeItem('cf_studente_attivo'); sessionStorage.removeItem('cf_docente_attivo'); sessionStorage.removeItem('cf_sess'); }catch(e){}
-    try{ if(SB && SB.auth) SB.auth.signOut(); }catch(e){}   // il docente che esce perde davvero i poteri
+    // Esce dal riconoscimento SOLO se chi sta uscendo e' il docente: un alunno che apre la pagina o preme
+    // «Esci» sullo stesso computer non deve scollegare la dashboard.
+    if(eraDocente){ try{ if(SB && SB.auth) SB.auth.signOut(); }catch(e){} }
     byId('gate-doc').style.display = 'none'; byId('gate-pin').style.display = '';
     byId('in-pin').value = ''; byId('in-pass').value = '';
     byId('err-alunno').textContent = ''; byId('err-docente').textContent = '';
