@@ -1533,6 +1533,9 @@
   var RIENTRO_STESSO_DISPOSITIVO_MS = 30 * 60 * 1000;   // mezz'ora dall'ultima volta che ha lavorato (scelta di Mauro, 17/09/2026)
   function cloudPresenza(){
     if(!SB || !STATE.studente || !STATE.proprietario) return;   // se non sei il proprietario, non scrivi
+    // Rete lenta: se il battito di prima e' ancora per strada (da meno di 8 secondi) non gliene accodo un altro.
+    if(STATE.battitoInVolo && (Date.now() - STATE.battitoInVolo) < 8000) return;
+    STATE.battitoInVolo = Date.now();
     try{
       SB.rpc('cf_battito', {
         p_pin: STATE.studente.pin,
@@ -1545,6 +1548,7 @@
         // l'alunno e' ancora collegato. «Non collegato» solo quando la pagina viene chiusa davvero.
         p_sfondo: (typeof document !== 'undefined' && document.visibilityState === 'hidden')
       }).then(function(res){
+        STATE.battitoInVolo = 0;
         // Rete muta = NON SO NULLA: non deduco niente e riprovo al battito dopo. Mai buttare fuori nessuno
         // per un silenzio della rete (18/09/2026).
         if(!res || res.error || !res.data) return;
@@ -1562,16 +1566,17 @@
         if(STATE.consegnaWatch){ try{ applicaConsegnaWatcher(riga); }catch(e){} }
         try{ applicaSessioneWatcher(riga); }catch(e){}
         try{ controllaAssegnazioneDaRiga(riga); }catch(e){}
-      }, function(){});
-    }catch(e){}
+      }, function(){ STATE.battitoInVolo = 0; });
+    }catch(e){ STATE.battitoInVolo = 0; }
     // (19/09/2026) Se qualcuno aveva bussato mentre questo dispositivo non dava segnali ('bloccato'), e' il
     // battito stesso, sul server (cf_battito), a rimettere 'in_corso': il proprietario e' di nuovo collegato,
     // quindi non c'e' niente da sbloccare e chi bussava resta fuori.
   }
-  // Battito ogni 10 secondi: e' l'UNICO contatto col cloud di un alunno al lavoro (scrive la presenza e si
-  // riporta a casa tutto quello che c'e' da sapere). Sei richieste al minuto invece delle quarantacinque del
+  // Battito ogni 5 secondi (19/09/2026: erano 10; con «collegato» = 20 secondi servono quattro battiti persi di
+  // fila, e non due, per far lampeggiare «Non collegato» un alunno che lavora). E' l'UNICO contatto col cloud di un alunno al lavoro (scrive la presenza e si
+  // riporta a casa tutto quello che c'e' da sapere). Dodici richieste al minuto invece delle quarantacinque del
   // 18/09/2026 mattina: con poco campo e' la differenza fra funzionare e no.
-  function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 10000); }
+  function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 5000); }
   function stopPresenza(){ if(STATE.presenzaTimer){ clearInterval(STATE.presenzaTimer); STATE.presenzaTimer = null; } }
   // Cancella la presenza SOLO se questo dispositivo possiede davvero la sessione. Chi è stato respinto
   // non deve poter toccare la presenza di nessuno.
@@ -4153,7 +4158,7 @@
      (erano 30: li ha voluti abbassare lui lo stesso giorno, dopo averlo provato).
      E' la STESSA misura che usa il cloud (cf_e_attivo) per decidere se chi bussa con quel PIN va respinto in
      silenzio o fa comparire lo «Sblocca»: quello che la dashboard mostra e quello che il cloud decide non
-     possono piu' divergere. Tenerle SEMPRE uguali. L'app batte ogni 10 secondi; se viene chiusa lo dice subito
+     possono piu' divergere. Tenerle SEMPRE uguali. L'app batte ogni 5 secondi; se viene chiusa lo dice subito
      (cf_esci) e la riga si spegne al primo aggiornamento; se non fa in tempo a dirlo, si spegne entro 20 secondi.
      L'eta' del segnale si misura sull'ora del CLOUD (cf_ora), non sull'orologio di questo computer. */
   var COLLEGATO_MS = 20000;
