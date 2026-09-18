@@ -1876,7 +1876,7 @@
     STATE.proprietario = false;           // non sono più il proprietario: non scrivo più presenza né consegne
     try{ sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
     byId('topbar-info').innerHTML = '';
-    mostraBloccoMsg('🔒', 'Sessione spostata', 'Questa verifica è stata aperta su un altro dispositivo, quindi qui è stata chiusa. Se è un errore, avvisa il prof.', '#8a6d3b');
+    mostraBloccoMsg('🔒', 'Sessione chiusa', 'Questa verifica è stata aperta su un altro dispositivo, oppure il prof ha scollegato il tuo PIN. Rientra col PIN: ritrovi il tuo lavoro. Se non ti aspettavi questo, avvisa il prof.', '#8a6d3b');
   }
   /* ---------- Guardia della SESSIONE (lato alunno): vale su QUALSIASI schermata ----------
      Il docente ha resettato o ricaricato la classe? Allora nel cloud l'alunno torna 'non_iniziato' E resta
@@ -4164,20 +4164,33 @@
   }
   // Quale azione mostrare nella colonna "Azioni" per un alunno.
   function wantAz(st){ return st.block ? 'sblocca' : (st.done ? 'riammetti' : ((st.on || st.part) ? 'consegna' : 'none')); }
-  /* «Sblocca» accanto a «Consegna» (18/09/2026, sera). Serve per il caso che il cloud non puo' indovinare:
-     l'alunno ha chiuso l'app mentre era gia' in secondo piano, il telefono non ha potuto dire niente e la riga
-     resta «In corso» con nessuno dentro. Un clic e quella riga torna libera. Chiede conferma perche' se
-     l'alunno STA lavorando davvero gli sposta la sessione e lui deve rientrare col PIN. */
-  function bottoneSbloccaSempre(a){
+  /* «Scollega» accanto a «Consegna» (18/09/2026, sera, secondo giro). Serve per il caso che il cloud non puo'
+     indovinare: l'alunno ha chiuso l'app mentre era gia' in secondo piano, il telefono non ha potuto dire
+     niente e la riga resta «In corso» con nessuno dentro. Un clic e quel PIN torna libero.
+     LA PRIMA VERSIONE ERA BUGIARDA (me l'ha fatto notare Mauro provandola): prometteva «il suo dispositivo si
+     chiude» e invece riusava lo Sblocca, che NON tocca il gettone di sessione — il dispositivo continuava a
+     battere e dopo un attimo tornava «In corso». Adesso azzera anche gettone e codice del dispositivo: il
+     battito di chi era dentro viene rifiutato e la sua app si chiude da sola («Sessione spostata») entro una
+     ventina di secondi. Chi NON c'e' piu' non se ne accorge nemmeno, ed e' il caso normale. */
+  function cloudScollega(pin, cb){
+    if(!SB || !pin){ cb && cb(); return; }
+    var giaCons = !!(CLOUD_STUD[pin] && CLOUD_STUD[pin].consegnata);
+    var upd = { ultimo_accesso:null, sfondo:false, fattura_corrente:null, livello_corrente:null,
+                sessione:null, dispositivo:null, riammesso:true,
+                stato:(giaCons ? 'consegnato' : 'non_iniziato') };
+    try{ SB.from('ced_studenti').update(upd).eq('pin', pin).then(function(){ cb && cb(); }, function(){ cb && cb(); }); }catch(e){ cb && cb(); }
+    if(CLOUD_STUD[pin]){ var c = CLOUD_STUD[pin]; c.ultimo_accesso=null; c.sfondo=false; c.fattura_corrente=null; c.riammesso=true; c.stato=(giaCons ? 'consegnato' : 'non_iniziato'); }
+  }
+  function bottoneScollega(a){
     var b = document.createElement('button');
-    b.className = 'btn-sblocca'; b.textContent = '🔓 Sblocca';
+    b.className = 'btn-sblocca'; b.textContent = 'Scollega';
     b.title = "Libera questo PIN: usalo se risulta collegato ma non c’è nessuno, o per farlo rientrare da un altro dispositivo";
     b.addEventListener('click', function(){
-      showConfirm(a.cognome + ' ' + a.nome + ' risulta collegato. Lo libero?' + String.fromCharCode(10,10)
-        + "Serve quando ha chiuso l’app e la riga resta «In corso», o per farlo rientrare da un altro dispositivo: il suo lavoro resta salvato."
-        + String.fromCharCode(10) + 'Se invece sta lavorando davvero, il suo dispositivo si chiude e dovrà rientrare col PIN.', function(){
-        cloudRiammetti(a.pin, false);
-        refreshCloudStud(function(){ refreshConsegne(renderDocente); });
+      showConfirm('Scollegare ' + a.cognome + ' ' + a.nome + '?' + String.fromCharCode(10,10)
+        + "Il suo PIN torna libero: potrà rientrare da qualsiasi dispositivo e ritrova il suo lavoro (salvato fino a pochi secondi prima)."
+        + String.fromCharCode(10)
+        + "Se in questo momento qualcuno sta usando quel PIN, la sua app si chiude entro una ventina di secondi e dovrà rientrare col PIN.", function(){
+        cloudScollega(a.pin, function(){ refreshCloudStud(function(){ refreshConsegne(renderDocente); }); });
       });
     });
     return b;
@@ -4189,7 +4202,7 @@
       var box = document.createElement('span');
       box.style.display = 'inline-flex'; box.style.gap = '6px'; box.style.alignItems = 'center'; box.style.flexWrap = 'wrap';
       box.appendChild(buildAzButtonUno('consegna', a));
-      box.appendChild(bottoneSbloccaSempre(a));
+      box.appendChild(bottoneScollega(a));
       return box;
     }
     return buildAzButtonUno(want, a);
