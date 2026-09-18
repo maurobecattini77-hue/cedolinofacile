@@ -1522,7 +1522,10 @@
         p_dispositivo: idDispositivo(),
         p_fattura: (STATE.assegnataId || null),
         p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
-        p_consegnata: !!STATE.consegnata
+        p_consegnata: !!STATE.consegnata,
+        // App aperta ma in secondo piano (scheda abbassata, schermo del telefono spento): per il docente
+        // l'alunno e' ancora collegato. «Non collegato» solo quando la pagina viene chiusa davvero.
+        p_sfondo: (typeof document !== 'undefined' && document.visibilityState === 'hidden')
       }).then(function(res){
         // Rete muta = NON SO NULLA: non deduco niente e riprovo al battito dopo. Mai buttare fuori nessuno
         // per un silenzio della rete (18/09/2026).
@@ -2760,7 +2763,21 @@
   try{ window.addEventListener('pagehide', function(){ if(STATE.studente){ try{ if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; } pushBozzaCloud(); }catch(e){} } }); }catch(e){}
   function riprendiPresenza(){ if(STATE.studente && STATE.proprietario) startPresenza(); }
   try{ window.addEventListener('pageshow', riprendiPresenza); }catch(e){}
-  try{ document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') riprendiPresenza(); }); }catch(e){}
+  try{ document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible'){ riprendiPresenza(); return; }
+    // va in secondo piano: lo dico subito, cosi' il docente continua a vederlo collegato anche se il
+    // telefono congela i battiti
+    if(STATE.studente && STATE.proprietario) cloudPresenza();
+  }); }catch(e){}
+  /* CHIUSURA VERA della pagina (la X, non lo schermo che si spegne): lo dico al cloud, cosi' nella
+     dashboard compare «Non collegato» subito. `persisted` distingue la chiusura dal semplice passaggio in
+     secondo piano: e' la regola che mi ha dato Mauro — se per rientrare serve il PIN, allora ero scollegato. */
+  try{ window.addEventListener('pagehide', function(ev){
+    if(ev && ev.persisted) return;                       // va solo in secondo piano: non e' una chiusura
+    if(STATE.studente && STATE.proprietario){
+      try{ SB.rpc('cf_esci', { p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo() }).then(function(){}, function(){}); }catch(e){}
+    }
+  }); }catch(e){}
   function cloudCollegati(cb){
     if(!SB){ cb && cb([]); return; }
     try{
@@ -2788,7 +2805,7 @@
   function refreshCloudStud(cb){
     if(!SB){ cb && cb(); return; }
     try{
-      SB.from('ced_studenti').select('pin,nome,cognome,classe,ultimo_accesso,fattura_corrente,livello_corrente,fattura_assegnata,livello_assegnato,consegnata,stato,riammesso,valutazione,assente').then(function(res){
+      SB.from('ced_studenti').select('pin,nome,cognome,classe,ultimo_accesso,fattura_corrente,livello_corrente,fattura_assegnata,livello_assegnato,consegnata,stato,riammesso,valutazione,assente,sfondo').then(function(res){
         // UN BUCO DI RETE NON DEVE CANCELLARE LA DASHBOARD. Prima CLOUD_STUD veniva azzerato PRIMA di
         // guardare l'esito: con la rete giu' restava vuoto, renderDocente non trovava piu' nessuna classe,
         // scriveva «Nessuna classe caricata» e cancellava pure cf_classe dal browser. Ogni 4 secondi.
@@ -4066,14 +4083,14 @@
     // PIN. Lo dico, e lo conto come collegato: così «Consegna» e «Consegna classe» passano dal suo dispositivo
     // e salvano il lavoro vero, fino all'ultimo tasto.
     if(stato === 'bloccato'){
-      var dentro = !!(s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 40000));
-      return { cls:'st-block', txt:(dentro ? 'Bloccato · doppio accesso' : 'Bloccato'), done:false, on:dentro, corso:dentro, block:true };
+      var dentro = attaccatoAllApp(s);
+      return { cls:'st-block', txt:'Bloccato', done:false, on:dentro, corso:dentro, block:true };
     }
     // Segnato ASSENTE dal docente: lo dico al posto di «Non collegato», che qui sarebbe un'informazione inutile
     // (certo che non è collegato: non c'è). Sta DOPO «Consegnato»: chi ha consegnato resta consegnato, anche se
     // poi lo segni assente per sbaglio. Non conta fra i «Collegati» (on:false).
     if(s.assente) return { cls:'st-assente', txt:'Assente', done:false, on:false, corso:false, block:false, assente:true };
-    var recent = s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 40000); // "Non collegato" dopo ~40s dall'ultimo battito (battito ogni 8s: ne puo' perdere quattro senza sparire) (prima 120s); si auto-corregge: se lavora, torna subito collegato
+    var recent = attaccatoAllApp(s);
     // Consegna PARZIALE (più fatture, alcune consegnate ma non tutte): mostra quali, in ordine numerico.
     if(multiplo && deliv.length > 0){
       return { cls:'st-part', txt:'Consegnato ' + descriviAssegnazioneBreve(deliv), done:false, on:recent, corso:recent, block:false, part:true };
@@ -4085,6 +4102,16 @@
       return { cls:'st-on', txt:'Collegato', done:false, on:true, corso:false, block:false };
     }
     return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false };
+  }
+  /* «Collegato» vuol dire: l'app e' ancora aperta su quel dispositivo. Il battito fresco lo dice di sicuro;
+     se invece l'app e' passata in secondo piano (scheda abbassata, schermo spento) il telefono congela i
+     battiti, ma l'app e' aperta lo stesso e per Mauro quell'alunno E' collegato: vale mezz'ora. Quando la
+     pagina viene chiusa davvero, l'app avvisa il cloud e qui si vede «Non collegato» nel giro di un attimo. */
+  function attaccatoAllApp(s){
+    if(!s || !s.ultimo_accesso) return false;
+    var eta = Date.now() - new Date(s.ultimo_accesso).getTime();
+    if(eta < 40000) return true;
+    return !!(s.sfondo && eta < 30 * 60 * 1000);
   }
   // Quale azione mostrare nella colonna "Azioni" per un alunno.
   function wantAz(st){ return st.block ? 'sblocca' : (st.done ? 'riammetti' : ((st.on || st.part) ? 'consegna' : 'none')); }
@@ -4466,6 +4493,7 @@
       STATE.multiMode = lista.length > 1;
       STATE.consegnata = false; // rientro per lavorare: azzera il flag PRIMA del ping presenza (evita ri-blocco dopo Riammetti)
       try{ if(pin) sessionStorage.setItem('cf_studente_attivo', pin); }catch(e){} // dopo un refresh resta dov'era (menù o fattura), niente PIN di nuovo
+      try{ if(pin) localStorage.setItem('cf_ultimo_pin', pin); }catch(e){}         // per il rientro automatico entro mezz'ora
       // L'assegnazione va saputa PRIMA del primo battito: cosi' la dashboard scrive «In corso» al primo colpo.
       // Prima startPresenza() partiva qui e il primo battito scriveva fattura_corrente vuota: per dieci secondi
       // il docente leggeva «Collegato» invece di «In corso» (18/09/2026).
@@ -8148,8 +8176,35 @@
           else { goGate(); }
         });
       }
-    } else { goGate(); }
+    } else { provaRientroAutomatico(); }
   }catch(e){ goGate(); }
+  /* REGOLA DI MAURO (18/09/2026): se riapre l'app dallo STESSO dispositivo entro mezz'ora, rientra da solo,
+     senza ridigitare il PIN, e ritrova il lavoro dov'era. Se nel frattempo il posto e' stato preso da un
+     altro dispositivo, o se e' passata piu' di mezz'ora, si torna alla schermata del PIN come sempre.
+     La porta cf_rientro non disturba nessuno: se non e' lo stesso dispositivo, non fa niente. */
+  function provaRientroAutomatico(){
+    var pinR = null;
+    try{ pinR = localStorage.getItem('cf_ultimo_pin'); }catch(e){}
+    if(!pinR || !SB){ goGate(); return; }
+    try{
+      SB.rpc('cf_rientro', { p_pin: pinR, p_dispositivo: idDispositivo() }).then(function(r){
+        var d = (r && !r.error) ? r.data : null;
+        if(!d || !d.allow){ goGate(); return; }
+        STATE.studente = { pin: pinR, nome: d.nome, cognome: d.cognome, classe: d.classe };
+        STATE.sessToken = d.sessione; STATE.sessTokenConfirmed = true;
+        try{ sessionStorage.setItem('cf_sess', d.sessione); }catch(e){}
+        try{ sessionStorage.setItem('cf_studente_attivo', pinR); }catch(e){}
+        if(!CLASSE || (d.classe && CLASSE.classe !== d.classe)) CLASSE = { classe:(d.classe || ''), alunni:[STATE.studente] };
+        cloudCaricaContesto(function(){
+          buildRubrica();
+          cloudModalitaAlunno(pinR, function(mode){
+            if(mode === 'compiti'){ avviaCompitiACasa(); return; }
+            cloudLeggiContestoAlunno(pinR, avviaAlunnoConLista);
+          });
+        });
+      }, function(){ goGate(); });
+    }catch(e){ goGate(); }
+  }
   /* Controllo silenzioso del collegamento: parte all'apertura e ripete ogni 15 secondi finché il telefono non
      riesce a raggiungere il cloud. Serve a scoprire i telefoni senza linea PRIMA della verifica, non durante.
      Se il cloud risponde, l'alunno non vede assolutamente niente. (18/09/2026) */
