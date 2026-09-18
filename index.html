@@ -4145,7 +4145,11 @@
       if(s.fattura_corrente || assigned.length){ return { cls:'st-on', txt:'In corso', done:false, on:true, corso:true, block:false }; }
       return { cls:'st-on', txt:'Collegato', done:false, on:true, corso:false, block:false };
     }
-    return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false };
+    // «haSessione»: non e' collegato, ma nel cloud risulta ancora dentro la verifica (stato in corso o bloccato).
+    // Serve al pulsante «Libera PIN»: e' il caso dell'alunno che ha chiuso l'app e deve rientrare da un altro
+    // dispositivo — cosi' il docente puo' liberarlo SUBITO, senza aspettare che qualcuno bussi e resti fuori.
+    return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false,
+             haSessione:(stato === 'in_corso' || stato === 'bloccato') };
   }
   /* «Collegato» vuol dire: l'app e' ancora aperta su quel dispositivo. Il battito fresco lo dice di sicuro;
      se invece l'app e' passata in secondo piano (scheda abbassata, schermo spento, un'altra app davanti) il
@@ -4163,46 +4167,65 @@
     return !!(s.sfondo && eta < 10 * 60 * 1000);
   }
   // Quale azione mostrare nella colonna "Azioni" per un alunno.
-  function wantAz(st){ return st.block ? 'sblocca' : (st.done ? 'riammetti' : ((st.on || st.part) ? 'consegna' : 'none')); }
-  /* «Scollega» accanto a «Consegna» (18/09/2026, sera, secondo giro). Serve per il caso che il cloud non puo'
-     indovinare: l'alunno ha chiuso l'app mentre era gia' in secondo piano, il telefono non ha potuto dire
-     niente e la riga resta «In corso» con nessuno dentro. Un clic e quel PIN torna libero.
-     LA PRIMA VERSIONE ERA BUGIARDA (me l'ha fatto notare Mauro provandola): prometteva «il suo dispositivo si
-     chiude» e invece riusava lo Sblocca, che NON tocca il gettone di sessione — il dispositivo continuava a
-     battere e dopo un attimo tornava «In corso». Adesso azzera anche gettone e codice del dispositivo: il
-     battito di chi era dentro viene rifiutato e la sua app si chiude da sola («Sessione spostata») entro una
-     ventina di secondi. Chi NON c'e' piu' non se ne accorge nemmeno, ed e' il caso normale. */
-  function cloudScollega(pin, cb){
+  /* UN PULSANTE SOLO, «Libera PIN», che si regola da se' (18/09/2026 sera, deciso da Mauro dopo averne provati
+     due). Prima ce n'erano due che facevano quasi la stessa cosa — «Sblocca» sulla riga bloccata e «Scollega»
+     su quella collegata — e confondevano e basta. Adesso e' uno, e guarda lui la situazione:
+       · se in quel momento l'alunno STA LAVORANDO DAVVERO (ha dato segnali negli ultimi 45 secondi) NON gli
+         tolgo il posto: lui continua, e do solo il via libera perche' possa rientrare da un altro dispositivo.
+         E' la regola di Mauro: chi lavora non si butta mai fuori.
+       · se invece non da' segnali (ha chiuso, e' senza campo, il telefono e' morto) libero il PIN sul serio,
+         togliendo anche gettone e codice del dispositivo: se per caso qualcuno era ancora dentro, la sua app
+         si chiude da sola entro una ventina di secondi.
+     In tutti e due i casi il PIN torna utilizzabile e il lavoro resta salvato. */
+  function wantAz(st){
+    if(st.done && st.block) return 'libera';
+    if(st.done) return 'riammetti';
+    if(st.on || st.part) return 'consegna';        // «Consegna» + «Libera PIN» affiancati
+    if(st.block) return 'libera';
+    return st.haSessione ? 'libera' : 'none';      // non collegato ma con una sessione aperta: si puo' liberare
+  }
+  function staLavorandoOra(pin){
+    var s = CLOUD_STUD[pin];
+    if(!s || !s.ultimo_accesso) return false;
+    return (Date.now() - new Date(s.ultimo_accesso).getTime()) < 45000;
+  }
+  function cloudLiberaPin(pin, cb){
     if(!SB || !pin){ cb && cb(); return; }
     var giaCons = !!(CLOUD_STUD[pin] && CLOUD_STUD[pin].consegnata);
-    var upd = { ultimo_accesso:null, sfondo:false, fattura_corrente:null, livello_corrente:null,
-                sessione:null, dispositivo:null, riammesso:true,
+    var lavora = staLavorandoOra(pin);
+    var upd = { riammesso:true, ultimo_accesso:null, sfondo:false, fattura_corrente:null, livello_corrente:null,
                 stato:(giaCons ? 'consegnato' : 'non_iniziato') };
+    // Non sta lavorando: gli tolgo anche il gettone, cosi' un eventuale dispositivo rimasto aperto si chiude.
+    if(!lavora){ upd.sessione = null; upd.dispositivo = null; }
     try{ SB.from('ced_studenti').update(upd).eq('pin', pin).then(function(){ cb && cb(); }, function(){ cb && cb(); }); }catch(e){ cb && cb(); }
     if(CLOUD_STUD[pin]){ var c = CLOUD_STUD[pin]; c.ultimo_accesso=null; c.sfondo=false; c.fattura_corrente=null; c.riammesso=true; c.stato=(giaCons ? 'consegnato' : 'non_iniziato'); }
   }
-  function bottoneScollega(a){
+  function bottoneLibera(a){
     var b = document.createElement('button');
-    b.className = 'btn-sblocca'; b.textContent = 'Scollega';
-    b.title = "Libera questo PIN: usalo se risulta collegato ma non c’è nessuno, o per farlo rientrare da un altro dispositivo";
+    b.className = 'btn-sblocca'; b.textContent = 'Libera PIN';
+    b.title = "Rende questo PIN subito utilizzabile da qualsiasi dispositivo, col lavoro salvato";
     b.addEventListener('click', function(){
-      showConfirm('Scollegare ' + a.cognome + ' ' + a.nome + '?' + String.fromCharCode(10,10)
-        + "Il suo PIN torna libero: potrà rientrare da qualsiasi dispositivo e ritrova il suo lavoro (salvato fino a pochi secondi prima)."
-        + String.fromCharCode(10)
-        + "Se in questo momento qualcuno sta usando quel PIN, la sua app si chiude entro una ventina di secondi e dovrà rientrare col PIN.", function(){
-        cloudScollega(a.pin, function(){ refreshCloudStud(function(){ refreshConsegne(renderDocente); }); });
+      var lavora = staLavorandoOra(a.pin);
+      var testo = lavora
+        ? (a.cognome + ' ' + a.nome + ' sta lavorando in questo momento.' + String.fromCharCode(10,10)
+           + "Libero lo stesso il suo PIN? Lui non viene interrotto: continua a lavorare. Ma da adesso il primo che digita quel PIN entra, anche da un altro dispositivo, e in quel momento il suo si chiude.")
+        : (a.cognome + ' ' + a.nome + ' non sta dando segnali.' + String.fromCharCode(10,10)
+           + "Libero il suo PIN: si rientra da qualsiasi dispositivo e ritrova il lavoro salvato. Se per caso qualcuno e' ancora dentro con quel PIN, la sua app si chiude entro una ventina di secondi.");
+      showConfirm(testo, function(){
+        cloudLiberaPin(a.pin, function(){ refreshCloudStud(function(){ refreshConsegne(renderDocente); }); });
       });
     });
     return b;
   }
   function buildAzButton(want, a){
     if(want === 'none') return null;
+    if(want === 'libera') return bottoneLibera(a);
     if(want === 'consegna'){
-      // due pulsanti nella stessa casella: «Consegna» e, accanto, «Sblocca».
+      // due pulsanti nella stessa casella: «Consegna» e, accanto, «Libera PIN».
       var box = document.createElement('span');
       box.style.display = 'inline-flex'; box.style.gap = '6px'; box.style.alignItems = 'center'; box.style.flexWrap = 'wrap';
       box.appendChild(buildAzButtonUno('consegna', a));
-      box.appendChild(bottoneScollega(a));
+      box.appendChild(bottoneLibera(a));
       return box;
     }
     return buildAzButtonUno(want, a);
