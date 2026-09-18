@@ -1326,7 +1326,7 @@
     // dentro l'HTML: fotografando dopo, il lavoro finiva nel cloud congelato in SOLA LETTURA. Poi il docente
     // riammetteva l'alunno, lui rientrava da un altro dispositivo, si ritrovava la sua fattura... e non poteva
     // piu' scriverci niente. (Per i lavori GIA' salvati bloccati c'e' sbloccaEditorRipristinato, al recupero.)
-    STATE.myDashboardHTML = byId('editor').innerHTML;
+    STATE.myDashboardHTML = ripulisciHtmlAlunno(byId('editor').innerHTML);
     lockEditor();
     STATE.myCortesiaHTML = buildCortesia(raccogli());
     STATE.correctCortesiaHTML = buildCortesia(STATE.soluzioneCorrente);
@@ -1415,7 +1415,7 @@
     aggiornaNeretto();
     catturaConsegnaCorrente();  // cattura myDashboard/myCortesia/correct* + salva la consegna reale nel cloud
   }
-  function stopConsegnaWatcher(){ if(STATE.consegnaTimer){ clearInterval(STATE.consegnaTimer); STATE.consegnaTimer = null; } }
+  function stopConsegnaWatcher(){ STATE.consegnaWatch = false; if(STATE.consegnaTimer){ clearInterval(STATE.consegnaTimer); STATE.consegnaTimer = null; } }
   // Sorvegliante lato ALUNNO: se il docente segna la sua verifica come consegnata, BLOCCA lo schermo.
   function startConsegnaWatcher(){
     stopConsegnaWatcher();
@@ -1423,10 +1423,12 @@
     // Si "arma" quando vediamo l'alunno davvero al lavoro (stato NON 'consegnato'). Un login normale parte già armato;
     // una sessione riammessa parte DISARMATA, così una 'consegnato' residua subito dopo la riammissione non ri-blocca.
     STATE.consegnaArmed = !STATE.riammesso;
-    STATE.consegnaTimer = setInterval(function(){
+    STATE.consegnaWatch = true;   // il giro al cloud lo fa il sorvegliante unico (startSessioneWatcher)
+  }
+  // La vecchia logica della consegna forzata, staccata dal suo timer: ora la chiama il sorvegliante unico.
+  function applicaConsegnaWatcher(s){
       if(!STATE.studente || STATE.consegnata){ return; }
-      SB.from('ced_studenti').select('stato').eq('pin', STATE.studente.pin).maybeSingle().then(function(res){
-        var s = (res && res.data) ? res.data : null;
+      (function(){
         if(!s) return;
         var st = s.stato || 'non_iniziato';
         // Consegna forzata del docente: il MIO dispositivo consegna il lavoro reale (come se premessi "Consegna"), poi blocca.
@@ -1437,8 +1439,7 @@
         if(st === 'consegnato'){ if(STATE.consegnaArmed && !STATE.consegnata) bloccaPerConsegnaDocente(); return; }
         // Stato di lavoro (in_corso / non_iniziato / bloccato): l'alunno è attivo → arma il blocco.
         STATE.consegnaArmed = true;
-      }, function(){});
-    }, 2500);
+      })();
   }
   // Ricostruisce le consegne LOCALI dell'alunno dal cloud (solo le REALI, non le "forzate/non svolte").
   // ATTENZIONE: conta SOLO le consegne di VERIFICA. I compiti a casa sono un mondo a parte: una fattura fatta
@@ -1533,7 +1534,7 @@
     // SENZA il pulsante «Sblocca». Tolto: ora 'bloccato' resta finché lo sblocca il docente, mentre il proprietario
     // continua a lavorare (vedi cloudCheckAccesso).
   }
-  function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 10000); } // battito ogni 10s: la dashboard reagisce in fretta
+  function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 8000); } // battito ogni 8s: la dashboard reagisce in fretta
   function stopPresenza(){ if(STATE.presenzaTimer){ clearInterval(STATE.presenzaTimer); STATE.presenzaTimer = null; } }
   // Cancella la presenza SOLO se questo dispositivo possiede davvero la sessione. Chi è stato respinto
   // non deve poter toccare la presenza di nessuno.
@@ -1875,11 +1876,14 @@
     if(!SB) return;
     STATE.sessArmed = false;
     STATE.sessioneChiusa = false;
+    // SORVEGLIANTE UNICO della riga dell'alunno: una sola lettura ogni 3 secondi per consegna forzata E sessione.
     STATE.sessTimer = setInterval(function(){
       if(!STATE.studente || STATE.modalitaCompiti) return;   // i compiti a casa non c'entrano
       SB.from('ced_studenti').select('stato,fattura_assegnata,sessione').eq('pin', STATE.studente.pin).maybeSingle().then(function(res){
         var s = (res && res.data) ? res.data : null;
         if(!s || !STATE.studente) return;
+        if(STATE.consegnaWatch){ try{ applicaConsegnaWatcher(s); }catch(e){} }
+        if(!STATE.studente || STATE.consegnata) return;
         // GETTONE: se il MIO gettone è confermato nel cloud ma ora ce n'è un ALTRO, sono stato sostituito → mi chiudo.
         if(sessioneSorpassata(s.sessione)){ terminaSessionePerAltroDispositivo(); return; }
         var st = s.stato || 'non_iniziato';
@@ -1889,7 +1893,7 @@
         if(!STATE.sessArmed){ if(st !== 'non_iniziato') STATE.sessArmed = true; return; }
         if(st === 'non_iniziato' && !s.fattura_assegnata) terminaSessioneVerifica();
       }, function(){});
-    }, 4000);
+    }, 3000);
   }
   /* ---------- Sorvegliante del CAMBIO ASSEGNAZIONE in tempo reale (lato alunno) ---------- */
   function assegnazioniUguali(a, b){
@@ -1904,6 +1908,7 @@
     STATE.assWatchTimer = setInterval(function(){
       if(!STATE.studente || STATE.assModaleAperta) return;
       if(byId('attesa').style.display !== 'none' || byId('blocco').style.display !== 'none') return; // gestiti altrove
+      STATE.assGiro = (STATE.assGiro || 0) + 1;
       cloudLeggiContestoAlunno(STATE.studente.pin, function(ctx){
         if(!STATE.studente || STATE.assModaleAperta) return;
         // (0) IL CLOUD NON HA RISPOSTO (wifi ballerino): non so nulla, quindi NON FACCIO NULLA.
@@ -1947,8 +1952,8 @@
         var rimosseIniziate = vecchia.filter(function(x){ return !nuoveId[x.id] && fatturaIniziata(pin, x.id); });
         if(rimosseIniziate.length){ chiediCambioAssegnazione(nuova, vecchia, rimosseIniziate); }
         else { applicaNuovaAssegnazione(nuova); } // nessuna fattura iniziata viene tolta → aggiornamento silenzioso
-      });
-    }, 3000);
+      }, (STATE.assGiro % 2) === 1);
+    }, 5000);
   }
   function applicaNuovaAssegnazione(nuova){
     STATE.mieAssegnate = nuova;
@@ -2697,7 +2702,14 @@
   }
   // Chiusura della pagina: cancello la presenza SOLO se ero io il proprietario della sessione.
   // (Prima anche il dispositivo respinto lo faceva, e cancellava la presenza di chi stava lavorando.)
-  try{ window.addEventListener('pagehide', function(){ if(STATE.studente){ try{ if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; } pushBozzaCloud(); }catch(e){} cloudClearPresenzaSeMia(STATE.studente.pin); } }); }catch(e){}
+  /* 18/09/2026. Su telefono 'pagehide' scatta anche solo bloccando lo schermo o passando a un'altra app: qui
+     dentro c'era la CANCELLAZIONE della presenza, e l'alunno spariva dalla dashboard («Non collegato») mentre
+     era li' col cedolino aperto. Ora pagehide salva solo il lavoro; la presenza la cancellano «Esci» e il
+     tempo (40 secondi senza battito). E appena la pagina torna davanti, si batte SUBITO. */
+  try{ window.addEventListener('pagehide', function(){ if(STATE.studente){ try{ if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; } pushBozzaCloud(); }catch(e){} } }); }catch(e){}
+  function riprendiPresenza(){ if(STATE.studente && STATE.proprietario) startPresenza(); }
+  try{ window.addEventListener('pageshow', riprendiPresenza); }catch(e){}
+  try{ document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') riprendiPresenza(); }); }catch(e){}
   function cloudCollegati(cb){
     if(!SB){ cb && cb([]); return; }
     try{
@@ -2737,7 +2749,7 @@
     }catch(e){ cb && cb(null); }
   }
   // Determina la fattura EFFETTIVA dell'alunno: ad personam se presente, altrimenti quella di classe (dal cloud).
-  function cloudLeggiContestoAlunno(pin, cb){
+  function cloudLeggiContestoAlunno(pin, cb, saltaConfig){
     if(!SB){
       var loc = null, locL = null; try{ loc = localStorage.getItem('cf_assegnata') || null; locL = localStorage.getItem('cf_livello') || null; }catch(e){}
       cb && cb({ fattura:assegnPrimoId(loc), livello:(assegnPrimoLiv(loc) || locL), lista:parseAssegnazione(loc) }); return;
@@ -2761,7 +2773,9 @@
         // MULTI-CLASSE: l'assegnazione è SOLO per-studente. Niente più fallback globale (sarebbe condiviso fra le classi).
         if(per && per.assente){ out.chiusa = true; cb && cb(out); return; }
         var cl = per ? per.classe : null;
-        if(!cl){ cb && cb(out); return; }
+        // saltaConfig: il sorvegliante chiede la sospensione a giri alterni, per dimezzare il traffico di rete
+        // (18/09/2026). Saltandola, out.chiusa resta false = «non lo so», che qui vuol dire «non faccio niente».
+        if(!cl || saltaConfig){ cb && cb(out); return; }
         SB.from('ced_config').select('sospese_classi').eq('id', 1).maybeSingle().then(function(r2){
           if(r2 && !r2.error && r2.data && Array.isArray(r2.data.sospese_classi)){ out.chiusa = r2.data.sospese_classi.indexOf(cl) !== -1; }
           cb && cb(out);
@@ -2883,13 +2897,26 @@
     // il refresh periodico aggiorna SOLO stato e conteggi: non ricostruisce le tendine
     STATE.collegatiTimer = setInterval(function(){ cloudDocenteHeartbeat(); refreshCloudStud(function(){ refreshConsegne(refreshStati); }); }, 4000);
   }
-  function cloudLoginPin(pin, cb){
-    if(!SB){ cb && cb(null); return; }
+  /* 18/09/2026 — LA FIGURACCIA DELLA 5F. Mezza classe col PIN GIUSTO si sentiva dire «PIN non riconosciuto».
+     Colpa di qui: supabase-js NON rifiuta la promessa quando la rete cade, RISOLVE con { data:null, error:... }.
+     Questa funzione guardava solo res.data, quindi un buco di wifi diventava «il tuo PIN non esiste». Nei log del
+     cloud di quella mattina non c'e' UNA sola richiesta rifiutata: le richieste non arrivavano proprio.
+     Ora: due ritentativi silenziosi, e poi un esito che dice di CHI e' la colpa ('rete' o 'assente'). */
+  function cloudLoginPin(pin, cb, tentativo){
+    if(!SB){ cb && cb(null, 'rete'); return; }
+    var t = tentativo || 0;
+    var riprova = function(){
+      if(t >= 2) return false;
+      setTimeout(function(){ cloudLoginPin(pin, cb, t + 1); }, 1200);
+      return true;
+    };
     try{
       SB.from('ced_studenti').select('pin,nome,cognome,classe').eq('pin', pin).maybeSingle().then(function(res){
-        cb && cb((res && res.data) ? res.data : null);
-      }, function(){ cb && cb(null); });
-    }catch(e){ cb && cb(null); }
+        if(!res || res.error){ if(!riprova()) cb && cb(null, 'rete'); return; }
+        if(!res.data){ cb && cb(null, 'assente'); return; }
+        cb && cb(res.data, 'ok');
+      }, function(){ if(!riprova()) cb && cb(null, 'rete'); });
+    }catch(e){ if(!riprova()) cb && cb(null, 'rete'); }
   }
   function cloudCaricaContesto(cb){
     if(!SB){ cb && cb(); return; }
@@ -3955,20 +3982,22 @@
     // PIN. Lo dico, e lo conto come collegato: così «Consegna» e «Consegna classe» passano dal suo dispositivo
     // e salvano il lavoro vero, fino all'ultimo tasto.
     if(stato === 'bloccato'){
-      var dentro = !!(s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 30000));
+      var dentro = !!(s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 40000));
       return { cls:'st-block', txt:(dentro ? 'Bloccato · doppio accesso' : 'Bloccato'), done:false, on:dentro, corso:dentro, block:true };
     }
     // Segnato ASSENTE dal docente: lo dico al posto di «Non collegato», che qui sarebbe un'informazione inutile
     // (certo che non è collegato: non c'è). Sta DOPO «Consegnato»: chi ha consegnato resta consegnato, anche se
     // poi lo segni assente per sbaglio. Non conta fra i «Collegati» (on:false).
     if(s.assente) return { cls:'st-assente', txt:'Assente', done:false, on:false, corso:false, block:false, assente:true };
-    var recent = s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 30000); // "Non collegato" dopo ~30s dall'ultimo battito (prima 120s); si auto-corregge: se lavora, torna subito collegato
+    var recent = s.ultimo_accesso && (Date.now() - new Date(s.ultimo_accesso).getTime() < 40000); // "Non collegato" dopo ~40s dall'ultimo battito (battito ogni 8s: ne puo' perdere quattro senza sparire) (prima 120s); si auto-corregge: se lavora, torna subito collegato
     // Consegna PARZIALE (più fatture, alcune consegnate ma non tutte): mostra quali, in ordine numerico.
     if(multiplo && deliv.length > 0){
       return { cls:'st-part', txt:'Consegnato ' + descriviAssegnazioneBreve(deliv), done:false, on:recent, corso:recent, block:false, part:true };
     }
     if(recent){
-      if(s.fattura_corrente){ return { cls:'st-on', txt:'In corso', done:false, on:true, corso:true, block:false }; }
+      // «In corso» appena e' dentro con un esercizio suo: non aspetto che il battito abbia scritto QUALE.
+      // (18/09: alunni che lavoravano col cedolino davanti e in dashboard risultavano solo «Collegato».)
+      if(s.fattura_corrente || assigned.length){ return { cls:'st-on', txt:'In corso', done:false, on:true, corso:true, block:false }; }
       return { cls:'st-on', txt:'Collegato', done:false, on:true, corso:false, block:false };
     }
     return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false };
@@ -4339,6 +4368,10 @@
       STATE.multiMode = lista.length > 1;
       STATE.consegnata = false; // rientro per lavorare: azzera il flag PRIMA del ping presenza (evita ri-blocco dopo Riammetti)
       try{ if(pin) sessionStorage.setItem('cf_studente_attivo', pin); }catch(e){} // dopo un refresh resta dov'era (menù o fattura), niente PIN di nuovo
+      // L'assegnazione va saputa PRIMA del primo battito: cosi' la dashboard scrive «In corso» al primo colpo.
+      // Prima startPresenza() partiva qui e il primo battito scriveva fattura_corrente vuota: per dieci secondi
+      // il docente leggeva «Collegato» invece di «In corso» (18/09/2026).
+      if(lista.length === 1) STATE.assegnataId = lista[0].id;
       startPresenza();
       startConsegnaWatcher();
       startAssegnazioneWatcher();
@@ -4697,6 +4730,7 @@
      RICOSTRUITO da quel JSON, non rianimato dalla fotografia.
      ========================================================= */
   var CED = (function(){
+    var BR2 = String.fromCharCode(10) + String.fromCharCode(10);   // due a capo, per i messaggi di conferma
     var CESTINO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>';
 
     /* Voci del menu principale, in ordine ALFABETICO di proposito: l'ordine giusto
@@ -4957,7 +4991,7 @@
         if(v.titolo){ var h = document.createElement('div'); h.className='mh'; h.textContent=v.titolo; m.appendChild(h); return; }
         var b = document.createElement('button');
         b.type = 'button';
-        b.innerHTML = v.n + (v.d ? '<span class="d">' + v.d + '</span>' : '');
+        b.innerHTML = esc(v.n) + (v.d ? '<span class="d">' + esc(v.d) + '</span>' : '');
         b.addEventListener('click', function(){ chiudi(); scegli(v, b); });
         m.appendChild(b);
       });
@@ -5054,7 +5088,7 @@
       function setVoce(v){
         r._nome = v.n;
         vcur.className = 'cur';
-        vcur.innerHTML = '<span class="n">' + v.n + '</span>' + (v.d ? '<span class="d">' + v.d + '</span>' : '');
+        vcur.innerHTML = '<span class="n">' + esc(v.n) + '</span>' + (v.d ? '<span class="d">' + esc(v.d) + '</span>' : '');
       }
       var vmenu = creaMenu(
         [{titolo: sezione.t + ' — ' + sezione.s}].concat(sezione.voci),
@@ -5119,7 +5153,7 @@
     }
 
     /* ---------- blocco RETRIBUZIONE ---------- */
-    function creaSezione(cfg, initRighe){
+    function creaSezione(cfg, initRighe, onCambio){
       var s = document.createElement('div');
       s.className = 'sotto';
       s.setAttribute('data-sez', cfg.id);
@@ -5135,7 +5169,23 @@
       bdel.title='Elimina «' + cfg.t + '»';
       bdel.setAttribute('aria-label','Elimina la sezione ' + cfg.t);
       bdel.innerHTML = CESTINO;
-      bdel.addEventListener('click', function(){ butta(s); aggiorna(); });
+      /* 18/09/2026: un alunno di 5L si e' ritrovato senza «Voci variabili» e non poteva piu' rimetterle (il
+         menu «Inserisci voce» offre i blocchi, non le sezioni della retribuzione). Ora: se la sezione ha righe
+         gia' compilate chiedo conferma, e in ogni caso resta il pulsante per rimetterla (vedi creaRetribuzione). */
+      bdel.addEventListener('click', function(){
+        var compilate = 0;
+        s.querySelectorAll('[data-riga]').forEach(function(r){
+          if(!r._leggi) return;
+          var d = r._leggi();
+          if((d && d.n) || (d && String(d.v || '').trim())) compilate++;
+        });
+        var vai = function(){ butta(s); aggiorna(); if(typeof onCambio === 'function') onCambio(); };
+        if(compilate && typeof showConfirm === 'function'){
+          showConfirm('Eliminare «' + cfg.t + '»?' + BR2 + 'Spariscono ' + compilate + (compilate === 1 ? ' riga che hai già compilato' : ' righe che hai già compilato') + '.' + BR2 + 'La sezione la puoi rimettere col pulsante «＋ ' + cfg.t + '», ma le righe dovrai riscriverle.', vai);
+          return;
+        }
+        vai();
+      });
       s.querySelector('.sotto-h').appendChild(bdel);
 
       var piu = document.createElement('button');
@@ -5166,14 +5216,44 @@
       bdelBlocco.addEventListener('click', function(){ butta(bl); creati['retr'] = false; sbloccaVoce('retr'); aggiorna(); });
       bl.querySelector('.blocco-h').appendChild(bdelBlocco);
 
+      // Barra di ripristino: mostra un pulsante per ogni sezione della retribuzione che in questo momento manca.
+      // Sparisce da sola quando ci sono tutte.
+      var barraSez = document.createElement('div');
+      barraSez.className = 'mwrap';
+      barraSez.style.cssText = 'margin-top:10px;';
+      function sincSezioni(){
+        barraSez.innerHTML = '';
+        SEZIONI.forEach(function(cfg){
+          if(corpo.querySelector('.sotto[data-sez="' + cfg.id + '"]')) return;
+          var b = document.createElement('button');
+          b.type = 'button'; b.className = 'piu';
+          b.textContent = '＋ ' + cfg.t;
+          b.title = 'Rimetti la sezione «' + cfg.t + '»';
+          b.addEventListener('click', function(){
+            var nuova = creaSezione(cfg, null, sincSezioni);
+            var dopo = null, passata = false;
+            SEZIONI.forEach(function(c){
+              if(c.id === cfg.id){ passata = true; return; }
+              if(passata && !dopo) dopo = corpo.querySelector('.sotto[data-sez="' + c.id + '"]');
+            });
+            corpo.insertBefore(nuova, dopo || barraSez);
+            sincSezioni(); aggiorna();
+          });
+          barraSez.appendChild(b);
+        });
+        barraSez.style.display = barraSez.children.length ? '' : 'none';
+      }
+
       if(init && init.sezioni){
         init.sezioni.forEach(function(sz){
           var cfg = null; SEZIONI.forEach(function(c){ if(c.id === sz.id) cfg = c; });
-          if(cfg) corpo.appendChild(creaSezione(cfg, sz.righe || []));
+          if(cfg) corpo.appendChild(creaSezione(cfg, sz.righe || [], sincSezioni));
         });
       } else {
-        SEZIONI.forEach(function(cfg){ corpo.appendChild(creaSezione(cfg)); });
+        SEZIONI.forEach(function(cfg){ corpo.appendChild(creaSezione(cfg, null, sincSezioni)); });
       }
+      corpo.appendChild(barraSez);
+      sincSezioni();
 
       bl._id = 'retr';
       bl._leggi = function(){
@@ -5434,7 +5514,7 @@
       function setFascia(f){
         scelta = f;
         fcur.className = 'cur';
-        fcur.innerHTML = '<span class="n">' + f.n + '</span>';
+        fcur.innerHTML = '<span class="n">' + esc(f.n) + '</span>';
       }
       var fmenu = creaMenu([{titolo:'In quale fascia ricade?'}].concat(
         cfg.fasce.map(function(f){ return {n:f.n, d:f.f, rif:f}; })
@@ -5525,7 +5605,7 @@
       function applica(v, initPann){
         d._scheda = v.scheda || null;
         cur.className = 'cur';
-        cur.innerHTML = '<span class="n">' + v.n + '</span>' + (v.d ? '<span class="d">' + v.d + '</span>' : '');
+        cur.innerHTML = '<span class="n">' + esc(v.n) + '</span>' + (v.d ? '<span class="d">' + esc(v.d) + '</span>' : '');
         corpo.innerHTML = '';
         if(v.scheda) pannelloFasce(corpo, d, scuoti, SCHEDE[v.scheda], initPann);
         else { d._mese = function(){ return 0; }; d._leggiPannello = function(){ return {}; }; }
@@ -5842,7 +5922,7 @@
       function setVoce(v){
         r._nome = v.n;
         vcur.className = 'cur';
-        vcur.innerHTML = '<span class="n">' + v.n + '</span>';
+        vcur.innerHTML = '<span class="n">' + esc(v.n) + '</span>';
       }
       var vmenu = creaMenu([{titolo:'Quale voce?'}].concat(VOCI_NETTO), function(v){ setVoce(v); aggiorna(); });
       vcur.addEventListener('click', function(){ apri(vcur, vmenu); });
@@ -6025,7 +6105,7 @@
       if(!v) return;
       creati[id] = true;
       var p = pulsantiVoce[id];
-      if(p){ p.b.disabled = true; p.b.innerHTML = v.n + '<span class="d">Già inserita</span>'; }
+      if(p){ p.b.disabled = true; p.b.innerHTML = esc(v.n) + '<span class="d">Già inserita</span>'; }
       if(v.pieno) creaRetribuzione(init);
       else if(v.tipo === 'contributi') creaContributi(init);
       else if(v.tipo === 'irpef') creaIrpefLorda(init);
@@ -6229,6 +6309,26 @@
       try{ pulisci(); costruisciMenuRoot(); if(stato) costruisciDaStato(stato); aggiorna(); }
       finally{ MUTO = false; }
       return true;
+    }
+
+    /* I nomi delle voci NON si scrivono a mano: si scelgono da un elenco chiuso. Se in un foglio consegnato
+       ne compare uno che l'app non offre, quel foglio e' stato ritoccato da fuori (Ispeziona). 18/09/2026. */
+    function vociStraneCed(stato){
+      var ammessi = {};
+      SEZIONI.forEach(function(sz){ (sz.voci || []).forEach(function(v){ ammessi[v.n] = true; }); });
+      VOCI.forEach(function(v){ ammessi[v.n] = true; });
+      VOCI_NETTO.forEach(function(v){ ammessi[v.n] = true; });
+      VOCI_DETRAZIONI.forEach(function(v){ ammessi[v.n] = true; });
+      ammessi['Contributi previdenziali'] = true;
+      var fuori = [], visti = {};
+      ((stato && stato.ordine) || []).forEach(function(b){
+        var d = (b && b.dati) || {};
+        (d.sezioni || []).forEach(function(sz){
+          (sz.righe || []).forEach(function(r){ if(r && r.n && !ammessi[r.n] && !visti[r.n]){ visti[r.n] = true; fuori.push(r.n); } });
+        });
+        (d.righe || []).forEach(function(r){ if(r && r.n && !ammessi[r.n] && !visti[r.n]){ visti[r.n] = true; fuori.push(r.n); } });
+      });
+      return fuori;
     }
 
     /* ---------- raccolta per consegna e valutazione ---------- */
@@ -6489,7 +6589,8 @@
       cortesiaSoluzione: cortesiaSoluzioneCed,
       mostraSoluzione: mostraSoluzioneCed,
       mostraFoglio: mostraFoglio,
-      scorciatoie: scorciatoieDaStato   /* per la traccia nella Valuta del docente */
+      scorciatoie: scorciatoieDaStato,  /* per la traccia nella Valuta del docente */
+      vociStrane: vociStraneCed         /* nomi di voce che l'app non offre: segno di una compilazione ritoccata */
     };
   })();
 
@@ -6671,6 +6772,47 @@
     var ced = ed.querySelector('.cedolino');
     (ced || ed).appendChild(box);
   }
+  /* FILTRO DI SICUREZZA (18/09/2026). La fotografia del lavoro e' HTML preso dal dispositivo dell'alunno: chi
+     apre «Ispeziona» puo' scriverci dentro quello che vuole, e quell'HTML poi viene aperto QUI, nel computer del
+     docente, dove c'e' la dashboard con tutti i poteri. Prima di mostrarlo (e prima di salvarlo) si buttano via
+     le parti che possono ESEGUIRE qualcosa: script, riquadri esterni, e gli attributi che fanno partire codice. */
+  function ripulisciHtmlAlunno(h){
+    if(!h) return '';
+    try{
+      var doc = new DOMParser().parseFromString('<div id="cf-filtro">' + h + '</div>', 'text/html');
+      var root = doc.getElementById('cf-filtro');
+      if(!root) return '';
+      root.querySelectorAll('script,iframe,object,embed,link,meta,base,form,frame,frameset,noscript,template,audio,video,source,track,portal').forEach(function(n){
+        if(n.parentNode) n.parentNode.removeChild(n);
+      });
+      root.querySelectorAll('*').forEach(function(el){
+        Array.prototype.slice.call(el.attributes).forEach(function(a){
+          var nome = (a.name || '').toLowerCase();
+          var val = (a.value || '').replace(/[^!-~]/g, '').toLowerCase();   // via spazi, a capo e caratteri invisibili: cosi' 'java script:' non inganna il controllo
+          if(nome.indexOf('on') === 0) el.removeAttribute(a.name);
+          else if((nome === 'src' || nome === 'href' || nome === 'xlink:href' || nome === 'action' || nome === 'formaction' || nome === 'srcdoc' || nome === 'data') && (val.indexOf('javascript:') === 0 || val.indexOf('data:text/html') === 0)) el.removeAttribute(a.name);
+          else if(nome === 'style' && val.indexOf('url(') !== -1) el.removeAttribute(a.name);
+        });
+      });
+      return root.innerHTML;
+    }catch(e){ return ''; }
+  }
+  /* Riquadro rosso nella Valuta: dice al docente che in quel foglio c'e' una voce che l'app non offre.
+     Non e' un voto e non tocca i conti: e' un avviso che quel cedolino e' stato ritoccato da fuori. */
+  function avvisoVociAlterate(ed, stato){
+    if(!ed || !stato || !CED || typeof CED.vociStrane !== 'function') return;
+    var fuori = [];
+    try{ fuori = CED.vociStrane(stato) || []; }catch(e){ return; }
+    if(!fuori.length) return;
+    var box = document.createElement('div');
+    box.className = 'traccia-scorciatoie';
+    box.style.cssText = 'border-color:#b4472f; background:#fdf1ee;';
+    box.innerHTML = '<div class="ts-tit" style="color:#b4472f;">Compilazione ritoccata da fuori · lo vedi solo tu</div><ul>' +
+      fuori.map(function(n){ return '<li>voce che l’app non offre: <b>' + esc(n) + '</b></li>'; }).join('') +
+      '</ul><div style="margin-top:6px; font-size:12.5px;">I nomi delle voci si scelgono da un elenco chiuso: questi sono stati scritti modificando la pagina.</div>';
+    var ced = ed.querySelector('.cedolino');
+    (ced || ed).appendChild(box);
+  }
   /* Lo stato del foglio (JSON) che sta dentro la fotografia della dashboard dell'alunno. */
   function statoDaHtml(html){
     if(!html) return null;
@@ -6704,7 +6846,7 @@
     var solF = soluzioneDi(f);
     if(VC.ct <= 1){
       var page = byId('soluzione-page');
-      if(VC.ct === 0){ page.innerHTML = f.nonSvolta ? (bannerNS + skelCort) : (statoAl ? buildCortesia({ tipo:'cedolino', stato:statoAl }) : (f.cortesiaAlunno || '<i>—</i>')); }
+      if(VC.ct === 0){ page.innerHTML = f.nonSvolta ? (bannerNS + skelCort) : (statoAl ? buildCortesia({ tipo:'cedolino', stato:statoAl }) : (ripulisciHtmlAlunno(f.cortesiaAlunno) || '<i>—</i>')); }
       else { page.innerHTML = (solF && solF.stato) ? CED.cortesiaSoluzione(solF) : (f.cortesiaCorretta || '<i>—</i>'); }
       var act = byId('sol-view-actions'); if(act){ act.innerHTML = ''; act.style.display = 'none'; }
       var ban = byId('sol-view-banner'); ban.className = ''; ban.style.cssText = 'margin-bottom:16px;'; ban.innerHTML = ''; ban.appendChild(vcBarNode());
@@ -6712,10 +6854,20 @@
     } else {
       var ed = byId('editor');
       if(VC.ct === 2){
-        ed.innerHTML = f.nonSvolta ? (bannerNS + skelDash) : (f.dashboardAlunno || '');
+        // SICUREZZA (18/09/2026): qui dentro finiva di filato l'HTML salvato dal dispositivo dell'alunno.
+        // Ora il suo foglio si ridisegna dallo stato (JSON) su un'impalcatura nostra; l'HTML dell'alunno serve
+        // solo per le consegne vecchie senza stato, e passa dal filtro.
+        if(f.nonSvolta){ ed.innerHTML = bannerNS + skelDash; }
+        else if(statoAl){
+          ed.innerHTML = skelDash;
+          var stAl = ed.querySelector('#ced-stato');
+          if(stAl) stAl.setAttribute('data-stato', JSON.stringify(statoAl));
+        }
+        else { ed.innerHTML = ripulisciHtmlAlunno(f.dashboardAlunno || ''); }
         if(!f.nonSvolta){
           if(statoAl && CED.mostraFoglio(statoAl)) lockEditor();   /* il suo foglio, com'era, disegnato come oggi */
           tracciaScorciatoie(ed);
+          avvisoVociAlterate(ed, statoAl);
         }
       }
       else if(solF && solF.stato){   /* il foglio compilato da chi non sbaglia niente */
@@ -7202,7 +7354,7 @@
   function catturaEsercitazione(){
     commitValues(byId('editor'));
     lockEditor();
-    STATE.myDashboardHTML = byId('editor').innerHTML;
+    STATE.myDashboardHTML = ripulisciHtmlAlunno(byId('editor').innerHTML);
     STATE.myCortesiaHTML = buildCortesia(raccogli());
     STATE.correctCortesiaHTML = buildCortesia(STATE.soluzioneCorrente);
     try{ mostraSoluzioneCompilatore(true); commitValues(byId('editor')); STATE.correctDashboardHTML = byId('editor').innerHTML; }catch(e){ STATE.correctDashboardHTML = ''; }
@@ -7445,8 +7597,13 @@
     }
     // non in locale: cerca nel cloud (accesso da un altro dispositivo)
     byId('err-alunno').textContent = 'Verifica in corso…';
-    cloudLoginPin(pin, function(stud){
-      if(!stud){ byId('err-alunno').textContent = 'PIN non riconosciuto. Chiedi al docente.'; ingressoLibera(); return; }
+    cloudLoginPin(pin, function(stud, esito){
+      if(!stud){
+        byId('err-alunno').textContent = (esito === 'rete')
+          ? 'Il collegamento non risponde: il tuo PIN va bene. Aspetta qualche secondo e premi ancora «Entra».'
+          : 'PIN non riconosciuto. Chiedi al docente.';
+        ingressoLibera(); return;
+      }
       cloudCaricaContesto(function(){ entraStudente(stud); });
     });
   });
