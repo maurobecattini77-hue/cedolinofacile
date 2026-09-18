@@ -846,8 +846,9 @@
 
       <div id="gate-doc" style="display:none;">
         <h1 class="gate-title">Accesso docente</h1>
-        <p class="gate-sub">Inserisci la password.</p>
-        <input id="in-pass" class="pass-input" type="password" placeholder="Password" autocomplete="off" />
+        <p class="gate-sub">Email e password del tuo accesso.</p>
+        <input id="in-mail" class="pass-input" type="email" placeholder="Email" autocomplete="username" value="maurobecattini77@gmail.com" style="margin-bottom:10px;" />
+        <input id="in-pass" class="pass-input" type="password" placeholder="Password" autocomplete="current-password" />
         <div class="gate-err" id="err-docente"></div>
         <button class="btn-entra" id="btn-entra-docente">Entra ›</button>
         <div class="gate-link" id="link-alunno">‹ Torna all'accesso studente</div>
@@ -1329,8 +1330,14 @@
     STATE.myDashboardHTML = ripulisciHtmlAlunno(byId('editor').innerHTML);
     lockEditor();
     STATE.myCortesiaHTML = buildCortesia(raccogli());
-    STATE.correctCortesiaHTML = buildCortesia(STATE.soluzioneCorrente);
-    try{ mostraSoluzioneCompilatore(true); commitValues(byId('editor')); STATE.correctDashboardHTML = byId('editor').innerHTML; }catch(e){ STATE.correctDashboardHTML = ''; }
+    if(STATE.soluzioneCorrente){
+      STATE.correctCortesiaHTML = buildCortesia(STATE.soluzioneCorrente);
+      try{ mostraSoluzioneCompilatore(true); commitValues(byId('editor')); STATE.correctDashboardHTML = byId('editor').innerHTML; }catch(e){ STATE.correctDashboardHTML = ''; }
+    } else {
+      // In verifica l'alunno non ha la soluzione: la versione corretta la ridisegna il docente nella Valuta.
+      STATE.correctCortesiaHTML = '';
+      STATE.correctDashboardHTML = '';
+    }
     cloudSalvaConsegna(function(ok){
       // Il marker locale "consegnata" (solo verifiche) si mette SOLO se il cloud ha confermato: così una consegna
       // fallita non risulta "già consegnata" (che farebbe saltare la ri-cattura nella consegna forzata).
@@ -1447,7 +1454,8 @@
   function rebuildConsegnateLocali(pin, cb){
     if(!SB){ cb && cb(); return; }
     try{
-      SB.from('ced_tentativi').select('fattura_id,modalita').eq('pin', pin).eq('completato', true).neq('modalita', 'compiti').then(function(res){
+      SB.rpc('cf_mie_consegne', { p_pin: pin }).then(function(res){
+        if(res && res.data) res = { data: res.data.filter(function(t){ return t.completato && t.modalita !== 'compiti'; }) };
         var ids = {};
         ((res && res.data) || []).forEach(function(t){ if(t.fattura_id && t.modalita !== 'forzata') ids[t.fattura_id] = true; });
         try{ localStorage.setItem('cf_consegnate_' + pin, JSON.stringify(Object.keys(ids))); }catch(e){}
@@ -1517,21 +1525,18 @@
   function cloudPresenza(){
     if(!SB || !STATE.studente || !STATE.proprietario) return;   // se non sei il proprietario, non scrivi
     try{
-      var adesso = new Date().toISOString();
-      SB.from('ced_studenti').update({
-        ultimo_accesso:adesso,
-        // ultima_attivita e dispositivo NON si cancellano chiudendo la pagina (ultimo_accesso sì): dicono QUANDO
-        // e DA DOVE questo alunno stava lavorando l'ultima volta. Li usa il rientro dallo stesso dispositivo.
-        ultima_attivita:adesso,
-        dispositivo:idDispositivo(),
-        fattura_corrente:(STATE.assegnataId||null),
-        livello_corrente:(typeof LIVELLO!=='undefined' ? String(LIVELLO) : null),
-        consegnata:!!STATE.consegnata
-      }).eq('pin', STATE.studente.pin).select('stato,fattura_assegnata,sessione,assente,riammesso,consegnata').then(function(res){
+      SB.rpc('cf_battito', {
+        p_pin: STATE.studente.pin,
+        p_sess: sessMia(),
+        p_dispositivo: idDispositivo(),
+        p_fattura: (STATE.assegnataId || null),
+        p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
+        p_consegnata: !!STATE.consegnata
+      }).then(function(res){
         // Rete muta = NON SO NULLA: non deduco niente e riprovo al battito dopo. Mai buttare fuori nessuno
         // per un silenzio della rete (18/09/2026).
-        if(!res || res.error || !res.data || !res.data.length) return;
-        var riga = res.data[0];
+        if(!res || res.error || !res.data || res.data.ok === false) return;
+        var riga = res.data;
         if(!STATE.studente || STATE.modalitaCompiti) return;
         if(STATE.consegnaWatch){ try{ applicaConsegnaWatcher(riga); }catch(e){} }
         try{ applicaSessioneWatcher(riga); }catch(e){}
@@ -1556,7 +1561,7 @@
   }
   function cloudClearPresenza(pin){
     if(!SB || !pin) return;
-    try{ SB.from('ced_studenti').update({ ultimo_accesso:null, fattura_corrente:null, livello_corrente:null }).eq('pin', pin).then(function(){}, function(){}); }catch(e){}
+    try{ SB.rpc('cf_esci', { p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo() }).then(function(){}, function(){}); }catch(e){}
   }
   function cloudResetPresenze(){
     if(!SB) return;
@@ -1702,61 +1707,28 @@
     if(!SB){ cb && cb({ allow:true }); return; }
     STATE.riammesso = false; // sessione pulita: si accende solo se il cloud dice "riammesso"
     try{
-      SB.from('ced_studenti').select('stato,riammesso,ultimo_accesso,consegnata,classe,dispositivo,ultima_attivita').eq('pin', pin).maybeSingle().then(function(res){
-        var s = (res && res.data) ? res.data : null;
-        var stato = s ? (s.stato || 'non_iniziato') : 'non_iniziato';
-        // Sono lo STESSO dispositivo che stava lavorando con questo PIN, e ha lavorato da meno di mezz'ora?
-        var mio = idDispositivo();
-        var eta = (s && s.ultima_attivita) ? (Date.now() - new Date(s.ultima_attivita).getTime()) : Infinity;
-        var stessoDispositivo = !!(mio && s && s.dispositivo && s.dispositivo === mio && eta < RIENTRO_STESSO_DISPOSITIVO_MS);
-        // (1) Sblocco/riammissione del docente: lo può prendere UN dispositivo SOLO (claim ATOMICO su riammesso):
-        //     il primo che lo "gira" a false vince, gli altri restano bloccati. Niente più "si sbloccano tutti".
-        //     ATTENZIONE: se la verifica era GIÀ CONSEGNATA (consegnata=true) è un puro SBLOCCO, NON una riammissione:
-        //     tolgo solo il blocco e la rimando alla schermata "Verifica consegnata" (niente lavoro riaperto).
-        if(s && s.riammesso){
-          var eraCons = !!s.consegnata;
-          var claim = eraCons ? { riammesso:false, stato:'consegnato' } : { stato:'in_corso', riammesso:false, consegnata:false };
-          SB.from('ced_studenti').update(claim).eq('pin', pin).eq('riammesso', true).select().then(function(r2){
-            var vinto = r2 && r2.data && r2.data.length > 0;
-            if(!vinto){ cb && cb({ allow:false }); return; }
-            if(eraCons){ cb && cb({ allow:false, consegnata:true }); }   // → schermata "Verifica consegnata"
-            else { STATE.riammesso = true; cb && cb({ allow:true }); }
-          }, function(){ cb && cb({ allow:true }); });
-          return;
+      // 18/09/2026: tutta la regola (riammissione, verifica gia' consegnata, esercitazione, secondo ingresso,
+      // rientro dallo stesso telefono entro mezz'ora) sta nella porta cf_accesso, sul server. Qui resta solo
+      // il gettone che il server ci consegna: senza quello questo dispositivo non puo' scrivere niente.
+      SB.rpc('cf_accesso', { p_pin: pin, p_dispositivo: idDispositivo() }).then(function(res){
+        var d = (res && !res.error) ? res.data : null;
+        // Rete muta: NON blocco nessuno (come prima). Meglio far lavorare che chiudere fuori per un buco di wifi.
+        if(!d || d.trovato === false){ cb && cb({ allow:true }); return; }
+        if(d.sessione){
+          STATE.sessToken = d.sessione;
+          STATE.sessTokenConfirmed = true;
+          try{ sessionStorage.setItem('cf_sess', d.sessione); }catch(e){}
         }
-        var blocca = function(){
-          SB.from('ced_studenti').update({ stato:'bloccato' }).eq('pin', pin).then(function(){}, function(){});
-          if(CLOUD_STUD[pin]) CLOUD_STUD[pin].stato = 'bloccato';
-          cb && cb({ allow:false });
-        };
-        cloudClasseInEsercitazione(s ? s.classe : null, function(eserc){
-          // (2) Verifica già consegnata → solo il docente può riammettere. Segnalo 'bloccato' (SENZA toccare la
-          //     consegna: consegnata resta true) così il docente vede che sta "bussando" e può Sbloccarla/Riammetterla.
-          //     In ESERCITAZIONE nessuno bussa: vede la sua schermata «consegnata» e basta.
-          if(stato === 'consegnato'){
-            if(eserc){ cb && cb({ allow:false, consegnata:true }); return; }
-            blocca(); return;
-          }
-          // (3) ESERCITAZIONE: nessun blocco, mai. Si entra sempre (se era segnato bloccato, torna in corso).
-          if(eserc){
-            SB.from('ced_studenti').update({ stato:'in_corso' }).eq('pin', pin).then(function(){}, function(){});
-            if(CLOUD_STUD[pin]) CLOUD_STUD[pin].stato = 'in_corso';
-            cb && cb({ allow:true }); return;
-          }
-          // (4) Era GIÀ dentro (in corso) o già bloccato → nuovo ingresso = BLOCCATO, e il docente lo vede subito.
-          //     Eccezione: è lo STESSO dispositivo di prima ed è passata meno di mezz'ora → ha solo chiuso la
-          //     pagina, lo faccio rientrare (ritrova il suo lavoro; il gettone nuovo chiude l'eventuale scheda vecchia).
-          if((stato === 'in_corso' || stato === 'bloccato') && !stessoDispositivo){ blocca(); return; }
-          // (5) Primo ingresso → entra e diventa il proprietario. La scrittura è CONDIZIONATA allo stato appena
-          //     letto: se due ingressi arrivano nello stesso istante (due dispositivi), passa solo il primo e
-          //     l'altro viene bloccato, invece di entrare tutti e due.
-          SB.from('ced_studenti').update({ stato:'in_corso' }).eq('pin', pin).eq('stato', stato).select('pin').then(function(r3){
-            if(r3 && !r3.error && r3.data && r3.data.length === 0){ blocca(); return; }
-            cb && cb({ allow:true });
-          }, function(){ cb && cb({ allow:true }); });
-        });
+        if(d.riammesso) STATE.riammesso = true;
+        if(d.allow){ cb && cb({ allow:true }); return; }
+        cb && cb({ allow:false, consegnata: !!d.consegnata });
       }, function(){ cb && cb({ allow:true }); });
     }catch(e){ cb && cb({ allow:true }); }
+  }
+  // Il gettone di questo dispositivo (sopravvive a un F5 nella stessa scheda).
+  function sessMia(){
+    if(STATE.sessToken) return STATE.sessToken;
+    try{ return sessionStorage.getItem('cf_sess') || null; }catch(e){ return null; }
   }
   // ESERCITAZIONE di classe (lista in ced_config.esercitazione_classi), come nella dashboard verifiche:
   // nessun blocco sul PIN e, alla consegna, l'alunno vede subito la soluzione a confronto.
@@ -2248,23 +2220,28 @@
       }
       var pin = STATE.studente.pin;
       if(STATE.sbloccoInCorso) return;
-      SB.from('ced_studenti').select('stato,riammesso,ultimo_accesso,consegnata,classe').eq('pin', pin).maybeSingle().then(function(res){
-        var s = (res && res.data) ? res.data : null;
+      // Tutto dalla porta: lo stato lo leggo con cf_stato, e lo sblocco lo prendo con cf_accesso, che decide
+      // sul server chi vince (un dispositivo solo) e mi restituisce il gettone nuovo. 18/09/2026.
+      SB.rpc('cf_stato', { p_pin: pin }).then(function(res){
+        var s = (res && !res.error) ? res.data : null;
         if(!s) return;
         if(s.riammesso){
-          // Sblocco del docente: lo prende UN dispositivo solo (claim ATOMICO). Gli altri restano bloccati.
           STATE.sbloccoInCorso = true;
-          var eraCons = !!s.consegnata; // verifica GIÀ consegnata → puro sblocco: NON riaprire il lavoro.
-          var claim = eraCons ? { riammesso:false, stato:'consegnato' } : { stato:'in_corso', riammesso:false, consegnata:false };
-          SB.from('ced_studenti').update(claim).eq('pin', pin).eq('riammesso', true).select().then(function(r2){
+          SB.rpc('cf_accesso', { p_pin: pin, p_dispositivo: idDispositivo() }).then(function(r2){
             STATE.sbloccoInCorso = false;
-            var vinto = r2 && r2.data && r2.data.length > 0;
-            if(!vinto) return; // un altro dispositivo ha già preso lo sblocco → resto bloccato
-            if(eraCons){
-              // Solo sblocco di una verifica già consegnata: resta su "Verifica consegnata", niente lavoro.
-              // Tengo il watcher attivo: se poi il docente la RIAMMETTE (consegnata=false), rientrerà a lavorare.
-              STATE.consegnata = true;
-              mostraBloccoMsg('✅', 'Verifica consegnata', 'Il docente ti ha sbloccato: la tua verifica resta consegnata. Se ti riammette, potrai rientrare.', '#2f7d54');
+            var d = (r2 && !r2.error) ? r2.data : null;
+            if(!d) return;
+            if(d.sessione){
+              STATE.sessToken = d.sessione; STATE.sessTokenConfirmed = true;
+              try{ sessionStorage.setItem('cf_sess', d.sessione); }catch(e){}
+            }
+            if(!d.allow){
+              // Sblocco di una verifica GIÀ consegnata: resta su «Verifica consegnata», niente lavoro riaperto.
+              // Se invece ha vinto un altro dispositivo, qui non cambia nulla e resto bloccato.
+              if(d.consegnata){
+                STATE.consegnata = true;
+                mostraBloccoMsg('✅', 'Verifica consegnata', 'Il docente ti ha sbloccato: la tua verifica resta consegnata. Se ti riammette, potrai rientrare.', '#2f7d54');
+              }
               return;
             }
             stopBloccoWatcher();
@@ -2273,22 +2250,20 @@
           }, function(){ STATE.sbloccoInCorso = false; });
           return;
         }
-        // (17/09/2026) Qui c'era la «promozione a bloccato dopo 45 secondi di silenzio»: non serve più, perché
-        // il blocco ora viene scritto subito all'ingresso (cloudCheckAccesso).
-        // ESERCITAZIONE: se il docente mette la classe in esercitazione, chi è fermo qui rientra da solo (nessun
-        // blocco in esercitazione). Non vale per chi ha consegnato: resta sulla sua schermata «consegnata».
+        // ESERCITAZIONE accesa dal docente: chi è fermo qui rientra da solo (in esercitazione non si blocca
+        // nessuno). Non vale per chi ha consegnato: resta sulla sua schermata.
         if(s.consegnata || s.stato === 'consegnato') return;
-        // La classe in esercitazione la chiedo un giro su tre: chi e' fermo sulla schermata di blocco non ha
-        // fretta di sapere se il docente ha acceso l'esercitazione, e con poco campo ogni richiesta pesa.
-        STATE.bloccoGiro = (STATE.bloccoGiro || 0) + 1;
-        if((STATE.bloccoGiro % 3) !== 1) return;
-        cloudClasseInEsercitazione(s.classe, function(eserc){
-          if(!eserc || !STATE.bloccoTimer || STATE.sbloccoInCorso || !STATE.studente || STATE.studente.pin !== pin) return;
-          stopBloccoWatcher();
-          SB.from('ced_studenti').update({ stato:'in_corso', riammesso:false }).eq('pin', pin).then(function(){
-            rebuildConsegnateLocali(pin, function(){ cloudLeggiContestoAlunno(pin, avviaAlunnoConLista); });
-          }, function(){ startBloccoWatcher(); });
-        });
+        if(!s.esercitazione) return;
+        stopBloccoWatcher();
+        SB.rpc('cf_accesso', { p_pin: pin, p_dispositivo: idDispositivo() }).then(function(r3){
+          var d3 = (r3 && !r3.error) ? r3.data : null;
+          if(d3 && d3.sessione){
+            STATE.sessToken = d3.sessione; STATE.sessTokenConfirmed = true;
+            try{ sessionStorage.setItem('cf_sess', d3.sessione); }catch(e){}
+          }
+          if(!d3 || !d3.allow){ startBloccoWatcher(); return; }
+          rebuildConsegnateLocali(pin, function(){ cloudLeggiContestoAlunno(pin, avviaAlunnoConLista); });
+        }, function(){ startBloccoWatcher(); });
       }, function(){});
     }, 5000);
   }
@@ -2337,8 +2312,12 @@
     var tent = 0;
     var manda = function(){
       try{
-        SB.from('ced_tentativi').insert(payload).then(function(res){
-          if(!(res && res.error)){ finish(true); return; }
+        SB.rpc('cf_consegna', {
+          p_pin: payload.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
+          p_fattura_id: payload.fattura_id, p_modalita: payload.modalita,
+          p_risposte: payload.risposte, p_tutte_fatte: !!STATE.consegnata
+        }).then(function(res){
+          if(res && !res.error && res.data === true){ finish(true); return; }
           if(tent < 3){ tent++; setTimeout(manda, tent * 2000); return; }
           finish(false);
         }, function(){
@@ -2826,23 +2805,29 @@
     // classe in mezzo al compito, esattamente il danno che i paracadute qui sotto servono a evitare.
     var out = { fattura:null, livello:null, lista:[], stato:null, consegnata:false, riammesso:false, chiusa:false, errore:false };
     try{
-      SB.from('ced_studenti').select('fattura_assegnata,livello_assegnato,stato,consegnata,riammesso,classe,assente').eq('pin', pin).maybeSingle().then(function(r1){
-        // ATTENZIONE: supabase-js NON rifiuta la promessa quando la rete cade: RISOLVE con { data:null, error:... }.
-        // Senza questo controllo, un errore di rete arrivava qui travestito da "riga vuota" = nessuna assegnazione.
-        if(!r1 || r1.error){ out.errore = true; cb && cb(out); return; }
-        var per = r1.data ? r1.data : null;
-        if(per){ out.stato = per.stato || null; out.consegnata = !!per.consegnata; out.riammesso = !!per.riammesso; out.classe = per.classe || null; }
-        if(per && per.fattura_assegnata){ out.fattura = assegnPrimoId(per.fattura_assegnata); out.livello = assegnPrimoLiv(per.fattura_assegnata) || per.livello_assegnato || null; out.lista = parseAssegnazione(per.fattura_assegnata); }
-        // MULTI-CLASSE: l'assegnazione è SOLO per-studente. Niente più fallback globale (sarebbe condiviso fra le classi).
-        if(per && per.assente){ out.chiusa = true; cb && cb(out); return; }
-        var cl = per ? per.classe : null;
-        // saltaConfig: il sorvegliante chiede la sospensione a giri alterni, per dimezzare il traffico di rete
-        // (18/09/2026). Saltandola, out.chiusa resta false = «non lo so», che qui vuol dire «non faccio niente».
-        if(!cl || saltaConfig){ cb && cb(out); return; }
-        SB.from('ced_config').select('sospese_classi').eq('id', 1).maybeSingle().then(function(r2){
-          if(r2 && !r2.error && r2.data && Array.isArray(r2.data.sospese_classi)){ out.chiusa = r2.data.sospese_classi.indexOf(cl) !== -1; }
-          cb && cb(out);
-        }, function(){ cb && cb(out); });
+      SB.rpc('cf_stato', { p_pin: pin }).then(function(r1){
+        // out.errore = "NON LO SO" (la rete non ha risposto): resta diverso da "nessuna assegnazione".
+        if(!r1 || r1.error || !r1.data){ out.errore = true; cb && cb(out); return; }
+        var per = r1.data;
+        out.stato = per.stato || null;
+        out.consegnata = !!per.consegnata;
+        out.riammesso = !!per.riammesso;
+        out.classe = per.classe || null;
+        if(per.fattura_assegnata){
+          out.fattura = assegnPrimoId(per.fattura_assegnata);
+          out.livello = assegnPrimoLiv(per.fattura_assegnata) || per.livello_assegnato || null;
+          out.lista = parseAssegnazione(per.fattura_assegnata);
+        }
+        // chiusa = il docente ha sospeso la verifica della sua classe, o l'ha segnato assente
+        out.chiusa = !!(per.assente || per.sospesa);
+        if(Array.isArray(STATE.esercitazioneClassi)){
+          var k = STATE.esercitazioneClassi.indexOf(out.classe);
+          if(per.esercitazione && k === -1) STATE.esercitazioneClassi.push(out.classe);
+          if(!per.esercitazione && k !== -1) STATE.esercitazioneClassi.splice(k, 1);
+        } else {
+          STATE.esercitazioneClassi = per.esercitazione ? [out.classe] : [];
+        }
+        cb && cb(out);
       }, function(){ out.errore = true; cb && cb(out); });
     }catch(e){ out.errore = true; cb && cb(out); }
   }
@@ -2860,30 +2845,20 @@
   function cloudModalitaAlunno(pin, cb){
     if(!SB){ cb && cb(null); return; }
     try{
-      SB.from('ced_studenti').select('fattura_assegnata,classe,assente').eq('pin', pin).maybeSingle().then(function(r1){
-        // Rete caduta (supabase RISOLVE con {data:null,error}): NON so nulla → flusso normale, MAI 'compiti'.
-        // Prima, con la rete giù, cfg restava null → hb=Infinity → "docente assente" → l'alunno finiva nei
-        // compiti a casa NEL MEZZO DI UNA VERIFICA.
-        if(!r1 || r1.error){ cb && cb(null); return; }
-        var per = r1.data ? r1.data : null;
-        var cl = per ? per.classe : null;
-        SB.from('ced_config').select('docente_heartbeat,classe_attiva,sospese_classi').eq('id', 1).maybeSingle().then(function(r2){
-          if(!r2 || r2.error){ cb && cb(null); return; } // idem: senza risposta non posso dedurre l'assenza del docente
-          var cfg = r2.data ? r2.data : null;
-          var sospese = (cfg && Array.isArray(cfg.sospese_classi)) ? cfg.sospese_classi : [];
-          if(cl && sospese.indexOf(cl) !== -1){ cb && cb('compiti'); return; } // SOSPESA dal docente → compiti (l'assegnazione resta, ma è chiusa a chiave)
-          if(per && per.assente){ cb && cb('compiti'); return; } // segnato ASSENTE dal docente → vede i compiti, senza nessun messaggio strano
-          if(per && per.fattura_assegnata){ cb && cb(null); return; } // ha un'assegnazione personale → normale (verifica o esercitazione)
-          // NIENTE ESERCIZIO ASSEGNATO: qui prima si guardava solo se il docente era collegato, e chiunque
-          // entrasse mentre lui era in dashboard restava piantato su «In attesa». Con le classi permanenti
-          // sarebbe successo di continuo: undici classi sempre vive, e il ragazzo della 5F che apre da casa
-          // mentre il prof è in aula con la 5L vedrebbe l'attesa invece dei compiti. Ora l'attesa vale SOLO
-          // per la classe che il docente ha aperto in quel momento (classe_attiva, scritta dal suo battito):
-          // sono i ragazzi in aula, davanti a lui, che aspettano l'assegnazione. Tutti gli altri: compiti.
-          var hb = (cfg && cfg.docente_heartbeat) ? (Date.now() - new Date(cfg.docente_heartbeat).getTime()) : Infinity;
-          var attiva = (cfg && cfg.classe_attiva) ? cfg.classe_attiva : null;
-          cb && cb((hb < 60000 && cl && attiva === cl) ? null : 'compiti');
-        }, function(){ cb && cb(null); });
+      SB.rpc('cf_stato', { p_pin: pin }).then(function(r1){
+        // Rete caduta: NON so nulla → flusso normale, MAI 'compiti' (con la rete giù l'alunno finiva nei
+        // compiti a casa NEL MEZZO DI UNA VERIFICA).
+        if(!r1 || r1.error || !r1.data){ cb && cb(null); return; }
+        var per = r1.data;
+        var cl = per.classe || null;
+        if(per.sospesa){ cb && cb('compiti'); return; }              // SOSPESA dal docente → compiti
+        if(per.assente){ cb && cb('compiti'); return; }              // segnato ASSENTE → compiti, senza messaggi strani
+        if(per.fattura_assegnata){ cb && cb(null); return; }         // ha un esercizio suo → verifica o esercitazione
+        // NIENTE ESERCIZIO ASSEGNATO: l'attesa vale SOLO per la classe che il docente ha aperto in quel
+        // momento (sono i ragazzi in aula davanti a lui). Tutti gli altri: compiti.
+        var hb = per.docente_heartbeat ? (Date.now() - new Date(per.docente_heartbeat).getTime()) : Infinity;
+        var attiva = per.classe_attiva || null;
+        cb && cb((hb < 60000 && cl && attiva === cl) ? null : 'compiti');
       }, function(){ cb && cb(null); });
     }catch(e){ cb && cb(null); }
   }
@@ -2965,6 +2940,11 @@
      Questa funzione guardava solo res.data, quindi un buco di wifi diventava «il tuo PIN non esiste». Nei log del
      cloud di quella mattina non c'e' UNA sola richiesta rifiutata: le richieste non arrivavano proprio.
      Ora: due ritentativi silenziosi, e poi un esito che dice di CHI e' la colpa ('rete' o 'assente'). */
+  // Da qui in giu' la differenza e' netta: il DOCENTE (autenticato) legge le tabelle, l'ALUNNO passa solo
+  // dalle porte. 18/09/2026.
+  function sonoDocente(){
+    try{ return sessionStorage.getItem('cf_docente_attivo') === '1'; }catch(e){ return false; }
+  }
   function cloudLoginPin(pin, cb, tentativo){
     if(!SB){ cb && cb(null, 'rete'); return; }
     var t = tentativo || 0;
@@ -2975,18 +2955,23 @@
       return true;
     };
     try{
-      SB.from('ced_studenti').select('pin,nome,cognome,classe').eq('pin', pin).maybeSingle().then(function(res){
+      SB.rpc('cf_login', { p_pin: pin }).then(function(res){
         if(!res || res.error){ if(!riprova()) cb && cb(null, 'rete'); return; }
-        if(!res.data){ cb && cb(null, 'assente'); return; }
-        cb && cb(res.data, 'ok');
+        var r = (res.data && res.data.length) ? res.data[0] : null;
+        if(!r){ cb && cb(null, 'assente'); return; }
+        r.pin = pin;
+        cb && cb(r, 'ok');
       }, function(){ if(!riprova()) cb && cb(null, 'rete'); });
     }catch(e){ if(!riprova()) cb && cb(null, 'rete'); }
   }
   function cloudCaricaContesto(cb){
     if(!SB){ cb && cb(); return; }
     try{
-      SB.from('ced_config').select('archivio,assegnata_id,livello').eq('id', 1).maybeSingle().then(function(res){
-        var cfg = (res && res.data) ? res.data : null;
+      var chiamata = sonoDocente()
+        ? SB.from('ced_config').select('archivio,assegnata_id,livello').eq('id', 1).maybeSingle()
+        : SB.rpc('cf_esercizi');
+      chiamata.then(function(res){
+        var cfg = (res && res.data) ? (sonoDocente() ? res.data : { archivio: res.data }) : null;
         if(cfg && cfg.archivio){ try{ FATTURE = adattaArchivio(cfg.archivio); buildRubrica(); }catch(e){} }
         if(cfg && cfg.assegnata_id){ STATE.assegnate = parseAssegnazione(cfg.assegnata_id); STATE.assegnataId = assegnPrimoId(cfg.assegnata_id); }
         var l0c = cfg ? (assegnPrimoLiv(cfg.assegnata_id) || cfg.livello) : null;
@@ -3005,8 +2990,11 @@
   function cloudAggiornaArchivio(cb){
     if(!SB){ cb && cb(false); return; }
     try{
-      SB.from('ced_config').select('archivio').eq('id', 1).maybeSingle().then(function(res){
-        var cfg = (res && res.data) ? res.data : null;
+      var chiamata2 = sonoDocente()
+        ? SB.from('ced_config').select('archivio').eq('id', 1).maybeSingle()
+        : SB.rpc('cf_esercizi');
+      chiamata2.then(function(res){
+        var cfg = (res && res.data) ? (sonoDocente() ? res.data : { archivio: res.data }) : null;
         if(cfg && cfg.archivio){
           try{
             FATTURE = adattaArchivio(cfg.archivio);
@@ -3993,7 +3981,8 @@
     // non deve far sparire dalla dashboard l'alunno vero, che sta lavorando.
     if(STATE.studente){ cloudClearPresenzaSeMia(STATE.studente.pin); STATE.studente = null; }
     STATE.proprietario = false;
-    try{ sessionStorage.removeItem('cf_studente_attivo'); sessionStorage.removeItem('cf_docente_attivo'); }catch(e){}
+    try{ sessionStorage.removeItem('cf_studente_attivo'); sessionStorage.removeItem('cf_docente_attivo'); sessionStorage.removeItem('cf_sess'); }catch(e){}
+    try{ if(SB && SB.auth) SB.auth.signOut(); }catch(e){}   // il docente che esce perde davvero i poteri
     byId('gate-doc').style.display = 'none'; byId('gate-pin').style.display = '';
     byId('in-pin').value = ''; byId('in-pass').value = '';
     byId('err-alunno').textContent = ''; byId('err-docente').textContent = '';
@@ -4400,9 +4389,19 @@
     // L'ULTIMO che entra vince. Se dopo uno «Sblocca» un altro dispositivo entra e pianta il SUO gettone, il
     // watcher di sessione qui sotto se ne accorge (il gettone nel cloud non è più il mio) e questo dispositivo si
     // chiude da solo, invece di continuare a lavorare in parallelo e sovrascrivere il lavoro dell'altro.
-    STATE.sessToken = String(Date.now()) + '-' + Math.random().toString(36).slice(2);
-    STATE.sessTokenConfirmed = false;   // divento "vulnerabile" al sorpasso solo dopo che il MIO gettone è atterrato nel cloud
-    try{ if(pin) SB.from('ced_studenti').update({ sessione: STATE.sessToken }).eq('pin', pin).then(function(res){ if(!(res && res.error)) STATE.sessTokenConfirmed = true; }, function(){}); }catch(e){}
+    // Il gettone lo genera il SERVER dentro cf_accesso (18/09/2026). Se per qualche motivo non ce l'ho
+    // (rientro dopo un F5 in una scheda nuova), me lo faccio ridare: la porta lo consegna solo se questo
+    // e' davvero il dispositivo che sta lavorando con quel PIN.
+    if(sessMia()){ STATE.sessToken = sessMia(); STATE.sessTokenConfirmed = true; }
+    else {
+      STATE.sessTokenConfirmed = false;
+      try{ if(pin) SB.rpc('cf_sessione', { p_pin: pin, p_sess: null, p_dispositivo: idDispositivo() }).then(function(res){
+        if(res && !res.error && res.data){
+          STATE.sessToken = res.data; STATE.sessTokenConfirmed = true;
+          try{ sessionStorage.setItem('cf_sess', res.data); }catch(e){}
+        }
+      }, function(){}); }catch(e){}
+    }
     // Carico la bozza in corso già nel cloud PRIMA che l'alunno ricominci a scrivere: così, se ha più fatture
     // abbozzate, salvandone una non cancella le altre (la mappa parte piena, non da zero).
     STATE.bozzaMappa = {};
@@ -4415,9 +4414,9 @@
     var leggiBozzaCloud = function(tentativo){
       if(!pin || !SB){ STATE.bozzaLetta = true; return; }
       try{
-        SB.from('ced_studenti').select('bozza_corrente').eq('pin', pin).maybeSingle().then(function(rb){
+        SB.rpc('cf_bozza_leggi', { p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo() }).then(function(rb){
           if(!rb || rb.error){ if(tentativo < 5) setTimeout(function(){ leggiBozzaCloud(tentativo + 1); }, 3000); return; }
-          var b = rb.data ? rb.data.bozza_corrente : null;
+          var b = rb.data || null;
           // FONDERE, non sostituire: se la lettura arriva in ritardo (rete lenta) DOPO che l'alunno ha già scritto,
           // sostituire in blocco la mappa perderebbe la bozza appena salvata. Per ogni fattura tengo la versione
           // PIÙ RECENTE (ts) tra quella del cloud e quella già in memoria; così non calpesto quello appena scritto.
@@ -4649,6 +4648,22 @@
   // quando il cloud rispondeva tornava «Verifica consegnata». Misurato dal vivo: 136 ms in rete locale,
   // ma sul wifi di scuola sono SECONDI: il tempo di leggerla o fotografarla. E se la consegna falliva,
   // l'alunno tornava a compilare avendo appena visto le risposte giuste.
+  /* 18/09/2026. La soluzione non scende piu' insieme all'esercizio: il telefono dell'alunno non ce l'ha.
+     Si chiede al server al momento giusto, e il server la consegna SOLO a chi ha gia' consegnato quel
+     cedolino ed e' nei compiti a casa o in una classe in esercitazione. Il docente, che ha l'archivio
+     completo, non passa di qui. */
+  function conSoluzione(fatturaId, cb){
+    var f = (typeof FATTURE !== 'undefined' && FATTURE) ? FATTURE.find(function(x){ return x.id === fatturaId; }) : null;
+    if(f && f.soluzione){ cb && cb(f.soluzione); return; }
+    if(!SB || !STATE.studente || !fatturaId){ cb && cb(null); return; }
+    try{
+      SB.rpc('cf_soluzione', { p_pin: STATE.studente.pin, p_fattura_id: fatturaId }).then(function(res){
+        var sol = (res && !res.error) ? res.data : null;
+        if(sol && f) f.soluzione = sol;   // per questa sessione la tengo, cosi' non la richiedo a ogni vista
+        cb && cb(sol);
+      }, function(){ cb && cb(null); });
+    }catch(e){ cb && cb(null); }
+  }
   function mostraSoluzioneCompilatore(silenzioso){
     var S = STATE.soluzioneCorrente;
     if(!S){ showAlert('Nessuna soluzione disponibile.'); return; }
@@ -4773,9 +4788,9 @@
       STATE.bozzaRiprovaTimer = setTimeout(function(){ STATE.bozzaRiprovaTimer = null; pushBozzaCloud(); }, 4000);
     };
     try{
-      SB.from('ced_studenti').update({ bozza_corrente: (STATE.bozzaMappa || {}) })
-        .eq('pin', pin).select('pin').then(function(res){
-          if(!res || res.error || !res.data || !res.data.length){ riprova(); return; }
+      SB.rpc('cf_bozza_salva', { p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo(), p_bozza: (STATE.bozzaMappa || {}) })
+        .then(function(res){
+          if(!res || res.error || res.data !== true){ riprova(); return; }
           if(STATE.bozzaRiprovaTimer){ clearTimeout(STATE.bozzaRiprovaTimer); STATE.bozzaRiprovaTimer = null; }
         }, function(){ riprova(); });
     }catch(e){ riprova(); }
@@ -7290,8 +7305,11 @@
   function cloudCompitiDone(pin, cb){
     if(!SB){ cb && cb([]); return; }
     try{
-      SB.from('ced_tentativi').select('fattura_id').eq('pin', pin).eq('modalita', 'compiti').eq('completato', true).then(function(res){
-        var ids = {}; ((res && res.data) || []).forEach(function(t){ if(t.fattura_id) ids[t.fattura_id] = true; });
+      SB.rpc('cf_mie_consegne', { p_pin: pin }).then(function(res){
+        var ids = {};
+        ((res && res.data) || []).forEach(function(t){
+          if(t.fattura_id && t.completato && t.modalita === 'compiti') ids[t.fattura_id] = true;
+        });
         cb && cb(Object.keys(ids));
       }, function(){ cb && cb([]); });
     }catch(e){ cb && cb([]); }
@@ -7299,9 +7317,8 @@
   function cloudCompitiUno(pin, fatturaId, cb){
     if(!SB){ cb && cb(null); return; }
     try{
-      SB.from('ced_tentativi').select('risposte,created_at').eq('pin', pin).eq('modalita', 'compiti').eq('fattura_id', fatturaId).order('created_at', {ascending:false}).limit(1).then(function(res){
-        var row = (res && res.data && res.data[0]) ? res.data[0] : null;
-        cb && cb(row ? (row.risposte || null) : null);
+      SB.rpc('cf_mia_consegna', { p_pin: pin, p_fattura_id: fatturaId }).then(function(res){
+        cb && cb((res && !res.error) ? (res.data || null) : null);
       }, function(){ cb && cb(null); });
     }catch(e){ cb && cb(null); }
   }
@@ -7310,6 +7327,18 @@
     STATE.modalitaCompiti = true;
     STATE.multiMode = false;
     STATE.solExitFn = null;
+    // Anche per i compiti serve il gettone: e' quello che permette a questo telefono di salvare e consegnare
+    // il PROPRIO lavoro. La porta lo da' solo a chi ha davvero diritto ai compiti (18/09/2026).
+    if(SB && STATE.studente && !sessMia()){
+      try{
+        SB.rpc('cf_compiti_aggancio', { p_pin: STATE.studente.pin, p_dispositivo: idDispositivo() }).then(function(r){
+          if(r && !r.error && r.data){
+            STATE.sessToken = r.data;
+            try{ sessionStorage.setItem('cf_sess', r.data); }catch(e){}
+          }
+        }, function(){});
+      }catch(e){}
+    }
     var go = function(){
       var pin = STATE.studente ? STATE.studente.pin : '';
       cloudCompitiDone(pin, function(done){
@@ -7386,7 +7415,14 @@
           return;
         }
         if(STATE.compitiDone && STATE.compitiDone.indexOf(STATE.assegnataId) === -1) STATE.compitiDone.push(STATE.assegnataId);
-        mostraSoluzioneCompiti();
+        conSoluzione(STATE.assegnataId, function(sol){
+          if(sol){
+            STATE.soluzioneCorrente = sol;
+            try{ STATE.correctCortesiaHTML = buildCortesia(sol); }catch(e){}
+            try{ mostraSoluzioneCompilatore(true); commitValues(byId('editor')); STATE.correctDashboardHTML = byId('editor').innerHTML; }catch(e){}
+          }
+          mostraSoluzioneCompiti();
+        });
       });
     });
   }
@@ -7396,13 +7432,19 @@
     cloudCompitiUno(pin, f.id, function(r){
       if(!r){ showAlert('Soluzione non trovata per questo cedolino.'); return; }
       STATE.assegnataId = f.id;
-      STATE.soluzioneCorrente = f.soluzione;
       STATE.titoloCorrente = f.titolo;
       STATE.myCortesiaHTML = r.cortesiaAlunno || '';
-      STATE.correctCortesiaHTML = r.cortesiaCorretta || '';
       STATE.myDashboardHTML = r.dashboardAlunno || '';
-      STATE.correctDashboardHTML = r.dashboardCorretta || '';
-      mostraSoluzioneCompiti();
+      conSoluzione(f.id, function(sol){
+        STATE.soluzioneCorrente = sol || null;
+        STATE.correctCortesiaHTML = r.cortesiaCorretta || '';
+        STATE.correctDashboardHTML = r.dashboardCorretta || '';
+        if(sol){
+          try{ STATE.correctCortesiaHTML = buildCortesia(sol); }catch(e){}
+          try{ mostraSoluzioneCompilatore(true); commitValues(byId('editor')); STATE.correctDashboardHTML = byId('editor').innerHTML; }catch(e){}
+        }
+        mostraSoluzioneCompiti();
+      });
     });
   }
   // Vista SOLUZIONE a confronto (riusa le 4 viste come le vede il docente), con uscita verso la maschera compiti.
@@ -7686,14 +7728,37 @@
       cloudCaricaContesto(function(){ entraStudente(stud); });
     });
   });
+  /* 18/09/2026. La password del docente non sta piu' nella pagina in nessuna forma, nemmeno come impronta:
+     il controllo lo fa Supabase, e da quel momento questo browser e' «autenticato». Sono i poteri di quel
+     riconoscimento — non una parola scritta nel codice — a far aprire le tabelle: l'elenco degli alunni,
+     i voti, le soluzioni. Chi legge il codice non trova piu' niente da provare a indovinare. */
   byId('btn-entra-docente').addEventListener('click', function(){
-    var p = (byId('in-pass').value||'');
-    // La password non sta scritta nella pagina: si confronta la sua impronta SHA-256 (14/09/2026).
-    improntaTesto(p).then(function(h){
-      if(h !== PASSWORD_DOCENTE_SHA256){ byId('err-docente').textContent = 'Password errata.'; return; }
-      try{ sessionStorage.setItem('cf_docente_attivo', '1'); }catch(e){} // dopo un refresh resta nella dashboard (niente password di nuovo)
-      renderDocente(); show('docente'); startCollegatiTimer();
-    }, function(){ byId('err-docente').textContent = 'Questo browser non riesce a controllare la password.'; });
+    var mail = (byId('in-mail').value || '').trim();
+    var pass = (byId('in-pass').value || '');
+    var err = byId('err-docente');
+    if(!mail || !pass){ err.textContent = 'Servono email e password.'; return; }
+    if(!SB){ err.textContent = 'Nessun collegamento al cloud: senza quello la dashboard non può aprirsi.'; return; }
+    var b = this; b.disabled = true; err.textContent = 'Controllo…';
+    SB.auth.signInWithPassword({ email: mail, password: pass }).then(function(res){
+      b.disabled = false;
+      if(!res || res.error){
+        var m = ((res && res.error && res.error.message) || '').toLowerCase();
+        err.textContent = (m.indexOf('invalid') !== -1 || m.indexOf('credentials') !== -1)
+          ? 'Email o password sbagliate.'
+          : 'Non riesco a controllare la password adesso: ' + ((res && res.error && res.error.message) || 'rete');
+        return;
+      }
+      SB.rpc('cf_e_docente').then(function(r){
+        if(!r || r.error || r.data !== true){
+          err.textContent = 'Questo utente non è fra i docenti autorizzati.';
+          try{ SB.auth.signOut(); }catch(e){}
+          return;
+        }
+        err.textContent = '';
+        try{ sessionStorage.setItem('cf_docente_attivo', '1'); }catch(e){} // dopo un refresh resta nella dashboard
+        renderDocente(); show('docente'); startCollegatiTimer();
+      }, function(){ err.textContent = 'Non riesco a verificare i permessi adesso.'; });
+    }, function(){ b.disabled = false; err.textContent = 'Non riesco a raggiungere il cloud: controlla la connessione.'; });
   });
 
   byId('btn-sospendi').addEventListener('click', function(){
@@ -8016,8 +8081,13 @@
     var attivoDoc = sessionStorage.getItem('cf_docente_attivo');
     var attivo = sessionStorage.getItem('cf_studente_attivo');
     if(attivoDoc){
-      // DOCENTE: dopo un refresh resta nella sua dashboard, senza rimettere la password.
-      renderDocente(); show('docente'); startCollegatiTimer();
+      // DOCENTE: dopo un refresh resta nella sua dashboard, ma solo se Supabase lo riconosce ancora.
+      if(SB && SB.auth){
+        SB.auth.getSession().then(function(r){
+          if(r && r.data && r.data.session){ renderDocente(); show('docente'); startCollegatiTimer(); }
+          else { try{ sessionStorage.removeItem('cf_docente_attivo'); }catch(e){} goGate(); }
+        }, function(){ goGate(); });
+      } else { goGate(); }
     } else if(attivo){
       var alu = (CLASSE && CLASSE.alunni) ? CLASSE.alunni.find(function(a){ return a.pin === attivo; }) : null;
       // Dopo un F5 rientra passando dal contesto (menù se più fatture, singola se una sola).
