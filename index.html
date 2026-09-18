@@ -1710,7 +1710,7 @@
   // Blocco anti-doppio-accesso: controlla se l'alunno può entrare e aggiorna lo stato.
   // LE REGOLE (dettate da Mauro il 19/09/2026; decide tutto la porta cf_accesso, sul server):
   //   - primo ingresso → «in corso»; ricaricare la pagina (F5) non e' un nuovo ingresso;
-  //   - COLLEGATO = l'app ha parlato col cloud negli ultimi 30 secondi (stessa misura in dashboard e nel cloud);
+  //   - COLLEGATO = l'app ha parlato col cloud negli ultimi 20 secondi (stessa misura in dashboard e nel cloud);
   //   - alunno COLLEGATO + un altro dispositivo col suo PIN → «Accesso bloccato» a chi bussa, e basta: chi
   //     lavora non se ne accorge e nella dashboard non compare niente (niente «Sblocca»: non c'e' niente da sbloccare);
   //   - alunno NON collegato + un altro dispositivo → «Accesso bloccato» a chi bussa, e al docente compare
@@ -4149,13 +4149,14 @@
     }
     return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false };
   }
-  /* UN OROLOGIO SOLO (Mauro, 19/09/2026): «collegato» = l'app ha parlato col cloud negli ultimi 30 secondi.
+  /* UN OROLOGIO SOLO (Mauro, 19/09/2026): «collegato» = l'app ha parlato col cloud negli ultimi 20 secondi
+     (erano 30: li ha voluti abbassare lui lo stesso giorno, dopo averlo provato).
      E' la STESSA misura che usa il cloud (cf_e_attivo) per decidere se chi bussa con quel PIN va respinto in
      silenzio o fa comparire lo «Sblocca»: quello che la dashboard mostra e quello che il cloud decide non
      possono piu' divergere. Tenerle SEMPRE uguali. L'app batte ogni 10 secondi; se viene chiusa lo dice subito
-     (cf_esci) e la riga si spegne al primo aggiornamento; se non fa in tempo a dirlo, si spegne entro 30 secondi.
+     (cf_esci) e la riga si spegne al primo aggiornamento; se non fa in tempo a dirlo, si spegne entro 20 secondi.
      L'eta' del segnale si misura sull'ora del CLOUD (cf_ora), non sull'orologio di questo computer. */
-  var COLLEGATO_MS = 30000;
+  var COLLEGATO_MS = 20000;
   var SCARTO_ORA_CLOUD = 0;   // ora del cloud meno ora di questo computer, in millisecondi
   function allineaOraCloud(){
     if(!SB) return;
