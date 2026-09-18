@@ -1389,7 +1389,7 @@
       if(!raw && !haBozza) return;                                           // mai aperta/nessun lavoro → la marca il docente
       try{ catturaFatturaPerForzata(x); }catch(e){}
     });
-    try{ SB.from('ced_studenti').update({ stato:'consegnato', consegnata:true, fattura_corrente:null }).eq('pin', pin).then(function(){}, function(){}); }catch(e){}
+    try{ SB.rpc('cf_segna_consegnato', { p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo() }).then(function(){}, function(){}); }catch(e){}
     stopPresenza();
     try{ sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
     mostraBloccoMsg('✅', 'Verifica consegnata', 'Il docente ha consegnato la tua verifica. Se ti riammette, potrai rientrare.', '#2f7d54');
@@ -1474,24 +1474,15 @@
       //     l'alunno scrive (mappa { fatturaId: html }). È il più fresco e l'unico che sopravvive a
       //     Backup/Ripristino di una verifica interrotta a metà. Alla consegna questa voce viene tolta,
       //     quindi qui non fa mai ombra a una consegna successiva.
-      SB.from('ced_studenti').select('bozza_corrente').eq('pin', pin).maybeSingle().then(function(rb){
-        var b = (rb && rb.data) ? rb.data.bozza_corrente : null;
-        if(b && typeof b === 'object' && b[fatturaId]){
-          var e = b[fatturaId];
-          if(typeof e === 'string'){ cb && cb({ html: e, ts: 0 }); return; }        // vecchio formato senza orario
-          if(e && e.html){ cb && cb({ html: e.html, ts: (e.ts || 0) }); return; }    // nuovo formato { html, ts }
-        }
-        // (2) Altrimenti l'ultima CONSEGNA (anche riaperta dal Riammetti) conserva il lavoro in risposte.dashboardAlunno.
-        SB.from('ced_tentativi').select('risposte,created_at').eq('pin', pin).eq('fattura_id', fatturaId)
-          .neq('modalita', 'compiti').order('created_at', { ascending:false }).limit(5).then(function(res){
-          var rows = (res && res.data) ? res.data : [];
-          for(var i = 0; i < rows.length; i++){
-            var rr = rows[i].risposte || {};
-            if(rr.nonSvolta) continue;                       // riga segnaposto «non svolta»: nessun lavoro dentro
-            if(rr.dashboardAlunno){ cb && cb({ html: rr.dashboardAlunno, ts: (rows[i].created_at ? Date.parse(rows[i].created_at) : 0) }); return; }
-          }
-          cb && cb(null);
-        }, function(){ cb && cb(null); });
+      // 18/09/2026: passa dalla porta. Prima leggeva le tabelle, e coi permessi chiusi la risposta non e'
+      // un errore ma un ELENCO VUOTO: l'alunno che rientrava da un altro dispositivo dopo lo «Sblocca» si
+      // ritrovava il foglio bianco. La porta guarda prima la bozza in corso, poi l'ultima consegna.
+      SB.rpc('cf_mio_lavoro', {
+        p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo(), p_fattura_id: fatturaId
+      }).then(function(res){
+        var d = (res && !res.error) ? res.data : null;
+        if(d && d.html){ cb && cb({ html: d.html, ts: (d.ts || 0) }); return; }
+        cb && cb(null);
       }, function(){ cb && cb(null); });
     }catch(e){ cb && cb(null); }
   }
@@ -1735,11 +1726,21 @@
   // cb(true/false). Se il cloud non risponde → false: valgono le regole normali della verifica.
   function cloudClasseInEsercitazione(classe, cb){
     if(!SB || !classe){ cb && cb(false); return; }
+    // Il DOCENTE legge la tabella (ha i poteri); l'ALUNNO lo chiede alla porta, che risponde per la sua classe.
     try{
-      SB.from('ced_config').select('esercitazione_classi').eq('id', 1).maybeSingle().then(function(r){
-        var arr = (r && !r.error && r.data && Array.isArray(r.data.esercitazione_classi)) ? r.data.esercitazione_classi : null;
-        if(arr) STATE.esercitazioneClassi = arr;
-        cb && cb(!!(arr && arr.indexOf(classe) !== -1));
+      if(sonoDocente()){
+        SB.from('ced_config').select('esercitazione_classi').eq('id', 1).maybeSingle().then(function(r){
+          var arr = (r && !r.error && r.data && Array.isArray(r.data.esercitazione_classi)) ? r.data.esercitazione_classi : null;
+          if(arr) STATE.esercitazioneClassi = arr;
+          cb && cb(!!(arr && arr.indexOf(classe) !== -1));
+        }, function(){ cb && cb(false); });
+        return;
+      }
+      var pinE = STATE.studente ? STATE.studente.pin : null;
+      if(!pinE){ cb && cb(false); return; }
+      SB.rpc('cf_stato', { p_pin: pinE }).then(function(r){
+        var d = (r && !r.error) ? r.data : null;
+        cb && cb(!!(d && d.esercitazione));
       }, function(){ cb && cb(false); });
     }catch(e){ cb && cb(false); }
   }
@@ -1912,11 +1913,10 @@
       var cl = STATE.classeAlunno || (STATE.studente && STATE.studente.classe) || null;
       if(!cl) return;
       try{
-        SB.from('ced_config').select('sospese_classi,esercitazione_classi').eq('id', 1).maybeSingle().then(function(r){
-          if(!r || r.error || !r.data) return;   // rete muta: non deduco niente
-          if(Array.isArray(r.data.esercitazione_classi)) STATE.esercitazioneClassi = r.data.esercitazione_classi;
-          var sos = Array.isArray(r.data.sospese_classi) ? r.data.sospese_classi : null;
-          if(sos && sos.indexOf(cl) !== -1) terminaSessioneVerifica();
+        SB.rpc('cf_stato', { p_pin: STATE.studente.pin }).then(function(r){
+          var d = (r && !r.error) ? r.data : null;
+          if(!d) return;   // rete muta: non deduco niente
+          if(d.sospesa || d.assente) terminaSessioneVerifica();
         }, function(){});
       }catch(e){}
     }, 30000);
@@ -2017,7 +2017,7 @@
       // Rifiuta: annulla il cambiamento. Ripristina la VECCHIA assegnazione nel cloud (la dashboard del docente
       // torna com'era) e tiene le fatture rimosse col loro lavoro.
       if(SB && STATE.studente){
-        try{ SB.from('ced_studenti').update({ fattura_assegnata: serializeAssegnazione(vecchia), livello_assegnato: (vecchia[0] && vecchia[0].liv!=null ? String(vecchia[0].liv) : null) }).eq('pin', pin).then(function(){},function(){}); }catch(e){}
+        try{ SB.rpc('cf_tieni_assegnazione', { p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo(), p_assegnata: serializeAssegnazione(vecchia), p_livello: (vecchia[0] && vecchia[0].liv != null ? String(vecchia[0].liv) : null) }).then(function(){}, function(){}); }catch(e){}
       }
       STATE.mieAssegnate = vecchia;
       if(byId('menu-fatture').style.display !== 'none'){ renderMenuFatture(); }
@@ -2035,7 +2035,7 @@
     STATE.consegnata = false;
     STATE.consegnaArmed = false; // si riarma quando il watcher vede l'alunno di nuovo al lavoro (evita ri-blocco su 'consegnato' residuo)
     // Consuma il flag lato cloud e riporta lo stato "in corso".
-    try{ if(SB) SB.from('ced_studenti').update({ riammesso:false, stato:'in_corso', consegnata:false }).eq('pin', pin).then(function(){}, function(){}); }catch(e){}
+    try{ if(SB) SB.rpc('cf_riammissione_presa', { p_pin: pin, p_sess: sessMia(), p_dispositivo: idDispositivo() }).then(function(){}, function(){}); }catch(e){}
     // Le consegne sono state cancellate dal docente: ricostruendo dal cloud nessuna fattura risulta più consegnata.
     rebuildConsegnateLocali(pin, function(){
       STATE.riammConsumando = false;
@@ -7182,7 +7182,18 @@
   function fmtDataIt(iso){ try{ var d = new Date(iso); if(isNaN(d.getTime())) return ''; function p(n){ return (n < 10 ? '0' : '') + n; } return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); }catch(e){ return ''; } }
   function cloudLeggiValutazione(pin, cb){
     if(!SB || !pin){ cb && cb(null, null); return; }
-    try{ SB.from('ced_studenti').select('valutazione,valutazione_snapshot').eq('pin', pin).maybeSingle().then(function(res){ var d = (res && res.data) ? res.data : null; cb && cb(d ? d.valutazione : null, d ? d.valutazione_snapshot : null); }, function(){ cb && cb(null, null); }); }catch(e){ cb && cb(null, null); }
+    // Il DOCENTE legge la tabella; l'ALUNNO chiede il PROPRIO voto alla porta, che glielo da' solo se
+    // e' stato pubblicato (18/09/2026: senza questo, a permessi chiusi, l'alunno non vedeva piu' il voto).
+    try{
+      if(sonoDocente()){
+        SB.from('ced_studenti').select('valutazione,valutazione_snapshot').eq('pin', pin).maybeSingle().then(function(res){ var d = (res && res.data) ? res.data : null; cb && cb(d ? d.valutazione : null, d ? d.valutazione_snapshot : null); }, function(){ cb && cb(null, null); });
+        return;
+      }
+      SB.rpc('cf_mia_valutazione', { p_pin: pin }).then(function(res){
+        var d = (res && !res.error) ? res.data : null;
+        cb && cb(d ? d.valutazione : null, d ? d.snapshot : null);
+      }, function(){ cb && cb(null, null); });
+    }catch(e){ cb && cb(null, null); }
   }
   /* La card del voto pubblicato: voto, data e commento del prof, e al tocco il dettaglio. */
   function cartaValutazione(val, snap, exitFn){
@@ -8149,8 +8160,8 @@
       if(byId('gate').style.display === 'none') return;   // solo sulla schermata del PIN: mentre l'alunno
                                                           // lavora ci pensa il battito, niente richieste in più
       try{
-        SB.from('ced_config').select('id').eq('id', 1).maybeSingle().then(function(r){
-          if(!r || r.error){ mostraGuaio(); return; }
+        SB.rpc('cf_ping').then(function(r){
+          if(!r || r.error || r.data !== true){ mostraGuaio(); return; }
           togliGuaio();
         }, function(){ mostraGuaio(); });
       }catch(e){ mostraGuaio(); }
