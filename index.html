@@ -1128,14 +1128,6 @@
   var toolbar = byId('toolbar');
 
   /* ---------- stato applicazione ---------- */
-  var PASSWORD_DOCENTE_SHA256 = "f93f7bce1839975467c82675eb4321f3e157274501b0eb8335fe2a2108de526d"; // solo l'impronta: la password in chiaro non sta piu' nella pagina (14/09/2026)
-  function improntaTesto(s){
-    try{
-      return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(buf){
-        return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0' + b.toString(16)).slice(-2); }).join('');
-      });
-    }catch(e){ return Promise.reject(e); }
-  }
   var CLASSE = null;
   var FATTURE = [];
   var RUBRICA = [];
@@ -7483,11 +7475,27 @@
     }
     var go = function(){
       var pin = STATE.studente ? STATE.studente.pin : '';
-      cloudCompitiDone(pin, function(done){
-        STATE.compitiDone = done || [];
-        renderCompitiPicker();
-        show('menu-fatture');
-      });
+      /* 19/09/2026. A classe sospesa (o da assente) l'alunno arriva qui con la VERIFICA ancora assegnata: quel
+         cedolino NON deve poterlo fare come compito, perche' dopo la consegna vedrebbe la soluzione della sua
+         verifica. Il server la nega comunque (cf_soluzione); qui lo tolgo anche dalla vista. In esercitazione no. */
+      var conElenco = function(){
+        cloudCompitiDone(pin, function(done){
+          STATE.compitiDone = done || [];
+          renderCompitiPicker();
+          show('menu-fatture');
+        });
+      };
+      STATE.inVerificaIds = [];
+      if(!SB || !pin){ conElenco(); return; }
+      try{
+        SB.rpc('cf_stato', { p_pin: pin }).then(function(r){
+          var d = (r && !r.error) ? r.data : null;
+          if(d && d.fattura_assegnata && !d.esercitazione){
+            STATE.inVerificaIds = parseAssegnazione(d.fattura_assegnata).map(function(x){ return x.id; });
+          }
+          conElenco();
+        }, function(){ conElenco(); });
+      }catch(e){ conElenco(); }
     };
     if((typeof FATTURE==='undefined' || !FATTURE || !FATTURE.length) && SB){ cloudCaricaContesto(function(){ go(); }); }
     else cloudAggiornaArchivio(function(){ go(); });   // sempre: la maschera dei compiti deve mostrare l'archivio di ADESSO
@@ -7512,7 +7520,10 @@
       var s = document.createElement('div'); s.className = 's'; s.textContent = f.difficoltaNome ? ('Difficoltà ' + f.difficoltaNome) : 'Cedolino da compilare';
       info.appendChild(t); info.appendChild(s);
       var cta = document.createElement('div'); cta.className = 'menu-cta';
-      if(fatta){
+      if((STATE.inVerificaIds || []).indexOf(f.id) !== -1){
+        // E' la sua verifica in corso: qui non si compila e non si vede la soluzione.
+        var iv = document.createElement('span'); iv.className = 'menu-done'; iv.textContent = 'In verifica'; iv.title = 'Questo cedolino è la tua verifica: si fa in classe.'; cta.appendChild(iv);
+      } else if(fatta){
         var d = document.createElement('span'); d.className = 'menu-done'; d.textContent = '✓ Consegnato'; cta.appendChild(d);
         var vs = document.createElement('button'); vs.className = 'btn-ghost'; vs.textContent = 'Vedi soluzione'; vs.style.marginLeft = '8px';
         vs.addEventListener('click', function(){ apriSoluzioneCompito(f); }); cta.appendChild(vs);
