@@ -1564,10 +1564,9 @@
         try{ controllaAssegnazioneDaRiga(riga); }catch(e){}
       }, function(){});
     }catch(e){}
-    // (17/09/2026) Qui c'era un AUTO-SBLOCCO: il battito del proprietario rimetteva 'in_corso' un alunno appena
-    // segnato 'bloccato'. Risultato in classe: l'alunno vedeva «Accesso bloccato» e il docente lo vedeva «In corso»,
-    // SENZA il pulsante «Sblocca». Tolto: ora 'bloccato' resta finché lo sblocca il docente, mentre il proprietario
-    // continua a lavorare (vedi cloudCheckAccesso).
+    // (19/09/2026) Se qualcuno aveva bussato mentre questo dispositivo non dava segnali ('bloccato'), e' il
+    // battito stesso, sul server (cf_battito), a rimettere 'in_corso': il proprietario e' di nuovo collegato,
+    // quindi non c'e' niente da sbloccare e chi bussava resta fuori.
   }
   // Battito ogni 10 secondi: e' l'UNICO contatto col cloud di un alunno al lavoro (scrive la presenza e si
   // riporta a casa tutto quello che c'e' da sapere). Sei richieste al minuto invece delle quarantacinque del
@@ -1709,21 +1708,18 @@
     }catch(e){ cb && cb(false, 'errore imprevisto'); }
   }
   // Blocco anti-doppio-accesso: controlla se l'alunno può entrare e aggiorna lo stato.
-  // LE REGOLE (17/09/2026, riprese da Fattura Facile come le vuole Mauro):
-  //   - primo ingresso → «in corso»;
-  //   - ricaricare la pagina (F5) NON è un nuovo ingresso: non passa di qui e non blocca mai;
-  //   - nuovo ingresso col PIN mentre è «in corso» (altro dispositivo, scheda chiusa e riaperta) → chi entra
-  //     viene BLOCCATO, e il docente lo vede SUBITO («Bloccato» col suo «Sblocca»). Chi stava già lavorando
-  //     NON viene toccato: continua il suo lavoro. Così, se un compagno entra col PIN di un altro, il docente
-  //     se ne accorge e il lavoro del vero alunno va avanti. Niente più conti sulla presenza (i vecchi 45
-  //     secondi): decidevano a volte di bloccare senza dirlo al docente, e il pulsante «Sblocca» non c'era;
-  //   - «Sblocca» fa entrare il dispositivo bloccato (uno solo) col lavoro salvato nel cloud; quello che era
-  //     dentro prima si chiude da solo («Sessione spostata»), così due dispositivi non scrivono insieme;
-  //   - RIENTRO DALLO STESSO DISPOSITIVO: se chi rimette il PIN è lo stesso telefono che stava lavorando e sono
-  //     passati meno di 30 minuti dall'ultima attività, entra senza blocco (ha chiuso la pagina per sbaglio, o è
-  //     finita l'ora). Passata la mezz'ora, o da un altro dispositivo, si blocca come sopra. «Sospendi» vince su
-  //     tutto: a classe sospesa non si entra comunque in verifica (si vedono i compiti);
-  //   - classe in ESERCITAZIONE → nessun blocco, si rientra sempre.
+  // LE REGOLE (dettate da Mauro il 19/09/2026; decide tutto la porta cf_accesso, sul server):
+  //   - primo ingresso → «in corso»; ricaricare la pagina (F5) non e' un nuovo ingresso;
+  //   - COLLEGATO = l'app ha parlato col cloud negli ultimi 30 secondi (stessa misura in dashboard e nel cloud);
+  //   - alunno COLLEGATO + un altro dispositivo col suo PIN → «Accesso bloccato» a chi bussa, e basta: chi
+  //     lavora non se ne accorge e nella dashboard non compare niente (niente «Sblocca»: non c'e' niente da sbloccare);
+  //   - alunno NON collegato + un altro dispositivo → «Accesso bloccato» a chi bussa, e al docente compare
+  //     «Bloccato» con lo «Sblocca». Premuto, chi bussava entra subito col lavoro salvato, e da li' in poi il
+  //     collegato e' lui: il dispositivo di prima, se ci riprova, trova «Accesso bloccato»;
+  //   - se il primo torna a dare segnali prima dello «Sblocca», torna «In corso» e lo «Sblocca» sparisce;
+  //   - chi e' fermo su «Accesso bloccato» ribussa da solo ogni 5 secondi (vedi startBloccoWatcher);
+  //   - RIENTRO DALLO STESSO DISPOSITIVO entro 30 minuti dall'ultima attività: libero, senza blocco;
+  //   - «Sospendi» vince su tutto; classe in ESERCITAZIONE → nessun blocco, si rientra sempre.
   function cloudCheckAccesso(pin, cb){
     if(!SB){ cb && cb({ allow:true }); return; }
     STATE.riammesso = false; // sessione pulita: si accende solo se il cloud dice "riammesso"
@@ -1876,7 +1872,7 @@
     STATE.proprietario = false;           // non sono più il proprietario: non scrivo più presenza né consegne
     try{ sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
     byId('topbar-info').innerHTML = '';
-    mostraBloccoMsg('🔒', 'Sessione chiusa', 'Questa verifica è stata aperta su un altro dispositivo, oppure il prof ha scollegato il tuo PIN. Rientra col PIN: ritrovi il tuo lavoro. Se non ti aspettavi questo, avvisa il prof.', '#8a6d3b');
+    mostraBloccoMsg('🔒', 'Sessione spostata', 'Questa verifica è stata aperta su un altro dispositivo, quindi qui è stata chiusa. Se è un errore, avvisa il prof.', '#8a6d3b');
   }
   /* ---------- Guardia della SESSIONE (lato alunno): vale su QUALSIASI schermata ----------
      Il docente ha resettato o ricaricato la classe? Allora nel cloud l'alunno torna 'non_iniziato' E resta
@@ -2233,13 +2229,15 @@
   }
   // Sorvegliante schermata di blocco: appena il docente sblocca (riammesso), l'alunno entra da solo.
   function stopBloccoWatcher(){ if(STATE.bloccoTimer){ clearInterval(STATE.bloccoTimer); STATE.bloccoTimer = null; } }
-  function startBloccoWatcher(){
+  function startBloccoWatcher(continua){
     stopBloccoWatcher();
     if(!SB) return;
     // SCADENZA. Prima questo sorvegliante era IMMORTALE: una scheda «Accesso bloccato» lasciata aperta ieri
     // continuava a interrogare il cloud all'infinito e, la lezione dopo, poteva marcare «Bloccato» un alunno
     // che stava lavorando tranquillo. Ora dopo un'ora si arrende e chiede di ricaricare la pagina.
-    var nato = Date.now();
+    // (chi ribussa riparte con `continua`: l'ora di nascita resta quella del primo blocco, non si rinnova.)
+    if(!continua || !STATE.bloccoNato) STATE.bloccoNato = Date.now();
+    var nato = STATE.bloccoNato;
     var VITA_MAX = 60 * 60 * 1000;
     STATE.bloccoTimer = setInterval(function(){
       if(!STATE.studente){ stopBloccoWatcher(); return; }
@@ -2283,7 +2281,11 @@
         // ESERCITAZIONE accesa dal docente: chi è fermo qui rientra da solo (in esercitazione non si blocca
         // nessuno). Non vale per chi ha consegnato: resta sulla sua schermata.
         if(s.consegnata || s.stato === 'consegnato') return;
-        if(!s.esercitazione) return;
+        /* RIBUSSO (19/09/2026). Se il cloud non mi segna 'bloccato' vuol dire che quando ho bussato il
+           proprietario era collegato (respinta silenziosa), oppure che e' tornato dopo. Ribusso da solo: finche'
+           lui e' collegato non succede niente e resto fuori; appena non lo e' piu', il cloud segna 'bloccato' e
+           al docente compare lo «Sblocca», senza che l'alunno debba ridigitare il PIN. Decide tutto cf_accesso. */
+        if(!s.esercitazione && (s.stato !== 'in_corso' || s.sospesa || s.assente)) return;
         stopBloccoWatcher();
         SB.rpc('cf_accesso', { p_pin: pin, p_dispositivo: idDispositivo() }).then(function(r3){
           var d3 = (r3 && !r3.error) ? r3.data : null;
@@ -2291,9 +2293,9 @@
             STATE.sessToken = d3.sessione; STATE.sessTokenConfirmed = true;
             try{ sessionStorage.setItem('cf_sess', d3.sessione); }catch(e){}
           }
-          if(!d3 || !d3.allow){ startBloccoWatcher(); return; }
+          if(!d3 || !d3.allow){ startBloccoWatcher(true); return; }
           rebuildConsegnateLocali(pin, function(){ cloudLeggiContestoAlunno(pin, avviaAlunnoConLista); });
-        }, function(){ startBloccoWatcher(); });
+        }, function(){ startBloccoWatcher(true); });
       }, function(){});
     }, 5000);
   }
@@ -3021,7 +3023,8 @@
       }catch(e){ doRender(); }
     } else { doRender(); }
     // il refresh periodico aggiorna SOLO stato e conteggi: non ricostruisce le tendine
-    STATE.collegatiTimer = setInterval(function(){ cloudDocenteHeartbeat(); refreshCloudStud(function(){ refreshConsegne(refreshStati); }); }, 4000);
+    allineaOraCloud(); STATE.giriDashboard = 0;
+    STATE.collegatiTimer = setInterval(function(){ if((++STATE.giriDashboard % 75) === 0) allineaOraCloud(); cloudDocenteHeartbeat(); refreshCloudStud(function(){ refreshConsegne(refreshStati); }); }, 4000);
   }
   /* 18/09/2026 — LA FIGURACCIA DELLA 5F. Mezza classe col PIN GIUSTO si sentiva dire «PIN non riconosciuto».
      Colpa di qui: supabase-js NON rifiuta la promessa quando la rete cade, RISOLVE con { data:null, error:... }.
@@ -4123,18 +4126,17 @@
     // ma offro lo SBLOCCO (toglie il blocco SENZA riaprire il lavoro). Dopo lo sblocco torna "Consegnato" + Riammetti.
     if(allDone && stato === 'bloccato') return { cls:'st-done', txt:'Consegnato', done:true, on:false, corso:false, block:true };
     if(allDone) return { cls:'st-done', txt:'Consegnato', done:true, on:false, corso:false, block:false };
-    // Bloccato con l'alunno GIÀ DENTRO che lavora (il suo dispositivo batte ancora): qualcuno ha provato col suo
-    // PIN. Lo dico, e lo conto come collegato: così «Consegna» e «Consegna classe» passano dal suo dispositivo
-    // e salvano il lavoro vero, fino all'ultimo tasto.
-    if(stato === 'bloccato'){
-      var dentro = attaccatoAllApp(s);
-      return { cls:'st-block', txt:'Bloccato', done:false, on:dentro, corso:dentro, block:true };
+    var recent = attaccatoAllApp(s);
+    // «Bloccato» (con lo «Sblocca») SOLO se l'alunno NON e' collegato e un altro dispositivo ha bussato col suo
+    // PIN. Se e' collegato non c'e' niente da sbloccare: resta «In corso» con la sola «Consegna», e chi ha
+    // bussato resta fuori senza che il docente debba saperne niente (regola di Mauro, 19/09/2026).
+    if(stato === 'bloccato' && !recent){
+      return { cls:'st-block', txt:'Bloccato', done:false, on:false, corso:false, block:true };
     }
     // Segnato ASSENTE dal docente: lo dico al posto di «Non collegato», che qui sarebbe un'informazione inutile
     // (certo che non è collegato: non c'è). Sta DOPO «Consegnato»: chi ha consegnato resta consegnato, anche se
     // poi lo segni assente per sbaglio. Non conta fra i «Collegati» (on:false).
     if(s.assente) return { cls:'st-assente', txt:'Assente', done:false, on:false, corso:false, block:false, assente:true };
-    var recent = attaccatoAllApp(s);
     // Consegna PARZIALE (più fatture, alcune consegnate ma non tutte): mostra quali, in ordine numerico.
     if(multiplo && deliv.length > 0){
       return { cls:'st-part', txt:'Consegnato ' + descriviAssegnazioneBreve(deliv), done:false, on:recent, corso:recent, block:false, part:true };
@@ -4145,89 +4147,34 @@
       if(s.fattura_corrente || assigned.length){ return { cls:'st-on', txt:'In corso', done:false, on:true, corso:true, block:false }; }
       return { cls:'st-on', txt:'Collegato', done:false, on:true, corso:false, block:false };
     }
-    // «haSessione»: non e' collegato, ma nel cloud risulta ancora dentro la verifica (stato in corso o bloccato).
-    // Serve al pulsante «Libera PIN»: e' il caso dell'alunno che ha chiuso l'app e deve rientrare da un altro
-    // dispositivo — cosi' il docente puo' liberarlo SUBITO, senza aspettare che qualcuno bussi e resti fuori.
-    return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false,
-             haSessione:(stato === 'in_corso' || stato === 'bloccato') };
+    return { cls:'st-off', txt:'Non collegato', done:false, on:false, corso:false, block:false };
   }
-  /* UNA REGOLA SOLA, voluta da Mauro il 18/09/2026 sera dopo tre giri di prove: «Collegato» vuol dire che
-     l'app sta parlando col cloud ADESSO. Niente eccezioni per l'app in secondo piano, niente «dipende da come
-     hai chiuso»: se l'app smette di parlare, entro un minuto e mezzo la riga diventa «Non collegato».
-     Sue parole: «voglio una cosa deterministica, devo sapere perfettamente quello che succede».
-     I 90 secondi (e non 40) servono perche' un'app lasciata dietro batte piu' piano — il telefono e il computer
-     rallentano i suoi tempi a un battito al minuto — e un alunno che va un attimo in bagno con lo schermo
-     spento non deve sparire dalla dashboard. Quando l'app viene chiusa mentre e' viva lo dice comunque
-     (cf_esci) e la riga si spegne subito. La colonna `sfondo` resta scritta, ma NON allunga piu' la presenza:
-     serve solo a capire, leggendo il database, se l'ultimo segnale arrivava da un'app in secondo piano. */
+  /* UN OROLOGIO SOLO (Mauro, 19/09/2026): «collegato» = l'app ha parlato col cloud negli ultimi 30 secondi.
+     E' la STESSA misura che usa il cloud (cf_e_attivo) per decidere se chi bussa con quel PIN va respinto in
+     silenzio o fa comparire lo «Sblocca»: quello che la dashboard mostra e quello che il cloud decide non
+     possono piu' divergere. Tenerle SEMPRE uguali. L'app batte ogni 10 secondi; se viene chiusa lo dice subito
+     (cf_esci) e la riga si spegne al primo aggiornamento; se non fa in tempo a dirlo, si spegne entro 30 secondi.
+     L'eta' del segnale si misura sull'ora del CLOUD (cf_ora), non sull'orologio di questo computer. */
+  var COLLEGATO_MS = 30000;
+  var SCARTO_ORA_CLOUD = 0;   // ora del cloud meno ora di questo computer, in millisecondi
+  function allineaOraCloud(){
+    if(!SB) return;
+    var t0 = Date.now();
+    try{ SB.rpc('cf_ora').then(function(r){
+      if(!r || r.error || !r.data) return;
+      var t1 = Date.now(), srv = new Date(r.data).getTime();
+      if(isFinite(srv) && (t1 - t0) < 4000) SCARTO_ORA_CLOUD = srv - (t0 + t1) / 2;
+    }, function(){}); }catch(e){}
+  }
   function attaccatoAllApp(s){
     if(!s || !s.ultimo_accesso) return false;
-    return (Date.now() - new Date(s.ultimo_accesso).getTime()) < 90000;
+    return (Date.now() + SCARTO_ORA_CLOUD - new Date(s.ultimo_accesso).getTime()) < COLLEGATO_MS;
   }
-  // Quale azione mostrare nella colonna "Azioni" per un alunno.
-  /* UN PULSANTE SOLO, «Libera PIN», che si regola da se' (18/09/2026 sera, deciso da Mauro dopo averne provati
-     due). Prima ce n'erano due che facevano quasi la stessa cosa — «Sblocca» sulla riga bloccata e «Scollega»
-     su quella collegata — e confondevano e basta. Adesso e' uno, e guarda lui la situazione:
-       · se in quel momento l'alunno STA LAVORANDO DAVVERO (ha dato segnali negli ultimi 45 secondi) NON gli
-         tolgo il posto: lui continua, e do solo il via libera perche' possa rientrare da un altro dispositivo.
-         E' la regola di Mauro: chi lavora non si butta mai fuori.
-       · se invece non da' segnali (ha chiuso, e' senza campo, il telefono e' morto) libero il PIN sul serio,
-         togliendo anche gettone e codice del dispositivo: se per caso qualcuno era ancora dentro, la sua app
-         si chiude da sola entro una ventina di secondi.
-     In tutti e due i casi il PIN torna utilizzabile e il lavoro resta salvato. */
-  function wantAz(st){
-    if(st.done && st.block) return 'libera';
-    if(st.done) return 'riammetti';
-    if(st.on || st.part) return 'consegna';        // «Consegna» + «Libera PIN» affiancati
-    if(st.block) return 'libera';
-    return st.haSessione ? 'libera' : 'none';      // non collegato ma con una sessione aperta: si puo' liberare
-  }
-  function staLavorandoOra(pin){
-    var s = CLOUD_STUD[pin];
-    if(!s || !s.ultimo_accesso) return false;
-    return (Date.now() - new Date(s.ultimo_accesso).getTime()) < 45000;
-  }
-  function cloudLiberaPin(pin, cb){
-    if(!SB || !pin){ cb && cb(); return; }
-    var giaCons = !!(CLOUD_STUD[pin] && CLOUD_STUD[pin].consegnata);
-    var lavora = staLavorandoOra(pin);
-    var upd = { riammesso:true, ultimo_accesso:null, sfondo:false, fattura_corrente:null, livello_corrente:null,
-                stato:(giaCons ? 'consegnato' : 'non_iniziato') };
-    // Non sta lavorando: gli tolgo anche il gettone, cosi' un eventuale dispositivo rimasto aperto si chiude.
-    if(!lavora){ upd.sessione = null; upd.dispositivo = null; }
-    try{ SB.from('ced_studenti').update(upd).eq('pin', pin).then(function(){ cb && cb(); }, function(){ cb && cb(); }); }catch(e){ cb && cb(); }
-    if(CLOUD_STUD[pin]){ var c = CLOUD_STUD[pin]; c.ultimo_accesso=null; c.sfondo=false; c.fattura_corrente=null; c.riammesso=true; c.stato=(giaCons ? 'consegnato' : 'non_iniziato'); }
-  }
-  function bottoneLibera(a){
-    var b = document.createElement('button');
-    b.className = 'btn-sblocca'; b.textContent = 'Libera PIN';
-    b.title = "Rende questo PIN subito utilizzabile da qualsiasi dispositivo, col lavoro salvato";
-    b.addEventListener('click', function(){
-      var lavora = staLavorandoOra(a.pin);
-      var testo = lavora
-        ? (a.cognome + ' ' + a.nome + ' sta lavorando in questo momento.' + String.fromCharCode(10,10)
-           + "Libero lo stesso il suo PIN? Lui non viene interrotto: continua a lavorare. Ma da adesso il primo che digita quel PIN entra, anche da un altro dispositivo, e in quel momento il suo si chiude.")
-        : (a.cognome + ' ' + a.nome + ' non sta dando segnali.' + String.fromCharCode(10,10)
-           + "Libero il suo PIN: si rientra da qualsiasi dispositivo e ritrova il lavoro salvato. Se per caso qualcuno e' ancora dentro con quel PIN, la sua app si chiude entro una ventina di secondi.");
-      showConfirm(testo, function(){
-        cloudLiberaPin(a.pin, function(){ refreshCloudStud(function(){ refreshConsegne(renderDocente); }); });
-      });
-    });
-    return b;
-  }
-  function buildAzButton(want, a){
-    if(want === 'none') return null;
-    if(want === 'libera') return bottoneLibera(a);
-    if(want === 'consegna'){
-      // due pulsanti nella stessa casella: «Consegna» e, accanto, «Libera PIN».
-      var box = document.createElement('span');
-      box.style.display = 'inline-flex'; box.style.gap = '6px'; box.style.alignItems = 'center'; box.style.flexWrap = 'wrap';
-      box.appendChild(buildAzButtonUno('consegna', a));
-      box.appendChild(bottoneLibera(a));
-      return box;
-    }
-    return buildAzButtonUno(want, a);
-  }
+  // Quale azione mostrare nella colonna "Azioni" per un alunno:
+  //   collegato → solo «Consegna»; non collegato e qualcuno ha bussato col suo PIN → «Sblocca»;
+  //   consegnato → «Riammetti»; altrimenti niente.
+  function wantAz(st){ return st.block ? 'sblocca' : (st.done ? 'riammetti' : ((st.on || st.part) ? 'consegna' : 'none')); }
+  function buildAzButton(want, a){ return buildAzButtonUno(want, a); }
   function buildAzButtonUno(want, a){
     if(want === 'none') return null;
     var b = document.createElement('button');
