@@ -1527,14 +1527,26 @@
         fattura_corrente:(STATE.assegnataId||null),
         livello_corrente:(typeof LIVELLO!=='undefined' ? String(LIVELLO) : null),
         consegnata:!!STATE.consegnata
-      }).eq('pin', STATE.studente.pin).then(function(){}, function(){});
+      }).eq('pin', STATE.studente.pin).select('stato,fattura_assegnata,sessione,assente,riammesso,consegnata').then(function(res){
+        // Rete muta = NON SO NULLA: non deduco niente e riprovo al battito dopo. Mai buttare fuori nessuno
+        // per un silenzio della rete (18/09/2026).
+        if(!res || res.error || !res.data || !res.data.length) return;
+        var riga = res.data[0];
+        if(!STATE.studente || STATE.modalitaCompiti) return;
+        if(STATE.consegnaWatch){ try{ applicaConsegnaWatcher(riga); }catch(e){} }
+        try{ applicaSessioneWatcher(riga); }catch(e){}
+        try{ controllaAssegnazioneDaRiga(riga); }catch(e){}
+      }, function(){});
     }catch(e){}
     // (17/09/2026) Qui c'era un AUTO-SBLOCCO: il battito del proprietario rimetteva 'in_corso' un alunno appena
     // segnato 'bloccato'. Risultato in classe: l'alunno vedeva «Accesso bloccato» e il docente lo vedeva «In corso»,
     // SENZA il pulsante «Sblocca». Tolto: ora 'bloccato' resta finché lo sblocca il docente, mentre il proprietario
     // continua a lavorare (vedi cloudCheckAccesso).
   }
-  function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 8000); } // battito ogni 8s: la dashboard reagisce in fretta
+  // Battito ogni 10 secondi: e' l'UNICO contatto col cloud di un alunno al lavoro (scrive la presenza e si
+  // riporta a casa tutto quello che c'e' da sapere). Sei richieste al minuto invece delle quarantacinque del
+  // 18/09/2026 mattina: con poco campo e' la differenza fra funzionare e no.
+  function startPresenza(){ stopPresenza(); cloudPresenza(); STATE.presenzaTimer = setInterval(cloudPresenza, 10000); }
   function stopPresenza(){ if(STATE.presenzaTimer){ clearInterval(STATE.presenzaTimer); STATE.presenzaTimer = null; } }
   // Cancella la presenza SOLO se questo dispositivo possiede davvero la sessione. Chi è stato respinto
   // non deve poter toccare la presenza di nessuno.
@@ -1877,13 +1889,13 @@
     STATE.sessArmed = false;
     STATE.sessioneChiusa = false;
     // SORVEGLIANTE UNICO della riga dell'alunno: una sola lettura ogni 3 secondi per consegna forzata E sessione.
-    STATE.sessTimer = setInterval(function(){
-      if(!STATE.studente || STATE.modalitaCompiti) return;   // i compiti a casa non c'entrano
-      SB.from('ced_studenti').select('stato,fattura_assegnata,sessione').eq('pin', STATE.studente.pin).maybeSingle().then(function(res){
-        var s = (res && res.data) ? res.data : null;
-        if(!s || !STATE.studente) return;
-        if(STATE.consegnaWatch){ try{ applicaConsegnaWatcher(s); }catch(e){} }
-        if(!STATE.studente || STATE.consegnata) return;
+    STATE.sessArmed = false;
+  }
+  // La riga arriva dal battito: qui si guarda solo se qualcun altro ha preso la sessione o se il docente
+  // ha resettato. Nessuna richiesta in piu' al cloud.
+  function applicaSessioneWatcher(s){
+      (function(){
+        if(!s || !STATE.studente || STATE.consegnata) return;
         // GETTONE: se il MIO gettone è confermato nel cloud ma ora ce n'è un ALTRO, sono stato sostituito → mi chiudo.
         if(sessioneSorpassata(s.sessione)){ terminaSessionePerAltroDispositivo(); return; }
         var st = s.stato || 'non_iniziato';
@@ -1892,8 +1904,22 @@
         // controllo qui sopra («Sessione spostata»).
         if(!STATE.sessArmed){ if(st !== 'non_iniziato') STATE.sessArmed = true; return; }
         if(st === 'non_iniziato' && !s.fattura_assegnata) terminaSessioneVerifica();
-      }, function(){});
-    }, 3000);
+      })();
+  }
+  // Assegnazione cambiata dal docente, o alunno segnato assente: me ne accorgo dalla riga del battito, e solo
+  // ALLORA faccio il giro completo (che e' quello che apre i pop-up). In condizioni normali: zero richieste.
+  function controllaAssegnazioneDaRiga(riga){
+    if(!riga || !STATE.studente || STATE.consegnata) return;
+    if(byId('attesa').style.display !== 'none' || byId('blocco').style.display !== 'none') return;
+    if(STATE.assModaleAperta) return;
+    if(riga.assente){ terminaSessioneVerifica(); return; }
+    var oraStr = (riga.fattura_assegnata || '');
+    var mieStr = (STATE.mieAssegnate || []).map(function(x){ return x.id + ':' + (x.liv || 1); }).join(',');
+    if(STATE.ultimaAssegnStr === undefined) STATE.ultimaAssegnStr = oraStr;
+    var cambiata = (oraStr !== STATE.ultimaAssegnStr);
+    STATE.ultimaAssegnStr = oraStr;
+    if(!cambiata && oraStr && mieStr) return;     // tutto come prima: niente da chiedere al cloud
+    giroAssegnazione();
   }
   /* ---------- Sorvegliante del CAMBIO ASSEGNAZIONE in tempo reale (lato alunno) ---------- */
   function assegnazioniUguali(a, b){
@@ -1902,13 +1928,30 @@
     return sa === sb;
   }
   function stopAssegnazioneWatcher(){ if(STATE.assWatchTimer){ clearInterval(STATE.assWatchTimer); STATE.assWatchTimer = null; } }
+  // Ogni 30 secondi UNA richiesta sola, leggera: serve a sapere se il docente ha premuto «Sospendi» (o
+  // «Esercitazione»). Tutto il resto viaggia sul battito. Il giro completo (giroAssegnazione) si fa solo
+  // quando c'e' davvero qualcosa di cambiato.
   function startAssegnazioneWatcher(){
     stopAssegnazioneWatcher();
     if(!SB) return;
     STATE.assWatchTimer = setInterval(function(){
-      if(!STATE.studente || STATE.assModaleAperta) return;
+      if(!STATE.studente || STATE.assModaleAperta || STATE.modalitaCompiti) return;
       if(byId('attesa').style.display !== 'none' || byId('blocco').style.display !== 'none') return; // gestiti altrove
-      STATE.assGiro = (STATE.assGiro || 0) + 1;
+      var cl = STATE.classeAlunno || (STATE.studente && STATE.studente.classe) || null;
+      if(!cl) return;
+      try{
+        SB.from('ced_config').select('sospese_classi,esercitazione_classi').eq('id', 1).maybeSingle().then(function(r){
+          if(!r || r.error || !r.data) return;   // rete muta: non deduco niente
+          if(Array.isArray(r.data.esercitazione_classi)) STATE.esercitazioneClassi = r.data.esercitazione_classi;
+          var sos = Array.isArray(r.data.sospese_classi) ? r.data.sospese_classi : null;
+          if(sos && sos.indexOf(cl) !== -1) terminaSessioneVerifica();
+        }, function(){});
+      }catch(e){}
+    }, 30000);
+  }
+  // Il giro completo: lo chiama il battito quando vede un'assegnazione diversa. E' l'unico che apre i pop-up.
+  function giroAssegnazione(){
+      if(!STATE.studente || STATE.assModaleAperta) return;
       cloudLeggiContestoAlunno(STATE.studente.pin, function(ctx){
         if(!STATE.studente || STATE.assModaleAperta) return;
         // (0) IL CLOUD NON HA RISPOSTO (wifi ballerino): non so nulla, quindi NON FACCIO NULLA.
@@ -1952,8 +1995,7 @@
         var rimosseIniziate = vecchia.filter(function(x){ return !nuoveId[x.id] && fatturaIniziata(pin, x.id); });
         if(rimosseIniziate.length){ chiediCambioAssegnazione(nuova, vecchia, rimosseIniziate); }
         else { applicaNuovaAssegnazione(nuova); } // nessuna fattura iniziata viene tolta → aggiornamento silenzioso
-      }, (STATE.assGiro % 2) === 1);
-    }, 5000);
+      });
   }
   function applicaNuovaAssegnazione(nuova){
     STATE.mieAssegnate = nuova;
@@ -2236,6 +2278,10 @@
         // ESERCITAZIONE: se il docente mette la classe in esercitazione, chi è fermo qui rientra da solo (nessun
         // blocco in esercitazione). Non vale per chi ha consegnato: resta sulla sua schermata «consegnata».
         if(s.consegnata || s.stato === 'consegnato') return;
+        // La classe in esercitazione la chiedo un giro su tre: chi e' fermo sulla schermata di blocco non ha
+        // fretta di sapere se il docente ha acceso l'esercitazione, e con poco campo ogni richiesta pesa.
+        STATE.bloccoGiro = (STATE.bloccoGiro || 0) + 1;
+        if((STATE.bloccoGiro % 3) !== 1) return;
         cloudClasseInEsercitazione(s.classe, function(eserc){
           if(!eserc || !STATE.bloccoTimer || STATE.sbloccoInCorso || !STATE.studente || STATE.studente.pin !== pin) return;
           stopBloccoWatcher();
@@ -2244,7 +2290,7 @@
           }, function(){ startBloccoWatcher(); });
         });
       }, function(){});
-    }, 3000);
+    }, 5000);
   }
   /* ---------- Consegne: salvataggio + Esporta HTML + Backup/Ripristina ---------- */
   function cloudSalvaConsegna(cb){
@@ -2285,9 +2331,26 @@
       }
       if(cb) cb(ok);
     };
-    try{
-      SB.from('ced_tentativi').insert(payload).then(function(res){ finish(!(res && res.error)); }, function(){ finish(false); });
-    }catch(e){ finish(false); }
+    // 18/09/2026: con poco campo il primo invio puo' non partire. Riprovo DA SOLO fino a quattro volte
+    // (subito, poi 2, 4 e 6 secondi) prima di dire che non e' andata: l'alunno non deve premere niente e
+    // il suo lavoro resta comunque nel telefono e nella bozza del cloud.
+    var tent = 0;
+    var manda = function(){
+      try{
+        SB.from('ced_tentativi').insert(payload).then(function(res){
+          if(!(res && res.error)){ finish(true); return; }
+          if(tent < 3){ tent++; setTimeout(manda, tent * 2000); return; }
+          finish(false);
+        }, function(){
+          if(tent < 3){ tent++; setTimeout(manda, tent * 2000); return; }
+          finish(false);
+        });
+      }catch(e){
+        if(tent < 3){ tent++; setTimeout(manda, tent * 2000); return; }
+        finish(false);
+      }
+    };
+    manda();
   }
   function cf_pad(n){ return (n<10?'0':'') + n; }
   function cf_dateStamp(){ var d=new Date(); return d.getFullYear()+cf_pad(d.getMonth()+1)+cf_pad(d.getDate())+'_'+cf_pad(d.getHours())+cf_pad(d.getMinutes()); }
@@ -2906,8 +2969,9 @@
     if(!SB){ cb && cb(null, 'rete'); return; }
     var t = tentativo || 0;
     var riprova = function(){
-      if(t >= 2) return false;
-      setTimeout(function(){ cloudLoginPin(pin, cb, t + 1); }, 1200);
+      if(t >= 4) return false;   // cinque tentativi in tutto, spalmati su una quindicina di secondi
+      try{ var e = byId('err-alunno'); if(e) e.textContent = 'Il collegamento è debole: sto riprovando… (' + (t + 2) + ' di 5)'; }catch(x){}
+      setTimeout(function(){ cloudLoginPin(pin, cb, t + 1); }, 1200 + t * 1000);
       return true;
     };
     try{
@@ -4275,8 +4339,12 @@
   /* ---------- Watcher: attesa dell'assegnazione dell'esercitazione ---------- */
   function inAttesa(){ return byId('attesa').style.display !== 'none'; }
   function stopAttesaWatcher(){ if(STATE.attesaTimer){ clearInterval(STATE.attesaTimer); STATE.attesaTimer = null; } }
-  function startAttesaWatcher(){ stopAttesaWatcher(); STATE.attesaTimer = setInterval(checkAssegnazione, 2000); }
+  function startAttesaWatcher(){ stopAttesaWatcher(); STATE.attesaTimer = setInterval(checkAssegnazione, 4000); }
   function checkAssegnazione(){
+    // 18/09/2026: questo sorvegliante serve SOLO mentre l'alunno aspetta l'assegnazione sulla schermata «In
+    // attesa». Prima continuava a interrogare il cloud anche DOPO che era entrato a lavorare (scartava la
+    // risposta a cose fatte): due richieste ogni due secondi buttate, per ogni alunno, per tutta l'ora.
+    if(!inAttesa()){ stopAttesaWatcher(); return; }
     try{ var c = localStorage.getItem('cf_classe'); if(c) CLASSE = JSON.parse(c); }catch(e){}
     try{ var a = localStorage.getItem('cf_archivio'); if(a) FATTURE = JSON.parse(a); }catch(e){}
     buildRubrica();
@@ -4696,10 +4764,21 @@
   function pushBozzaCloud(){
     if(!SB || !STATE.studente || !STATE.proprietario || STATE.modalitaCompiti) return;
     if(!STATE.bozzaLetta) return;   // non so ancora cosa c'e' nel cloud: scrivere ora cancellerebbe le altre bozze
+    var pin = STATE.studente.pin;
+    var riprova = function(){
+      // Con poco campo la scrittura ogni tanto non parte. Riprovo da solo, in silenzio, sempre con la versione
+      // PIÙ RECENTE del lavoro (rileggo STATE.bozzaMappa al momento del tentativo). L'alunno non vede niente:
+      // il suo lavoro e' gia' al sicuro nel telefono. (18/09/2026)
+      if(STATE.bozzaRiprovaTimer) return;
+      STATE.bozzaRiprovaTimer = setTimeout(function(){ STATE.bozzaRiprovaTimer = null; pushBozzaCloud(); }, 4000);
+    };
     try{
       SB.from('ced_studenti').update({ bozza_corrente: (STATE.bozzaMappa || {}) })
-        .eq('pin', STATE.studente.pin).then(function(){}, function(){});
-    }catch(e){}
+        .eq('pin', pin).select('pin').then(function(res){
+          if(!res || res.error || !res.data || !res.data.length){ riprova(); return; }
+          if(STATE.bozzaRiprovaTimer){ clearTimeout(STATE.bozzaRiprovaTimer); STATE.bozzaRiprovaTimer = null; }
+        }, function(){ riprova(); });
+    }catch(e){ riprova(); }
   }
   function salvaLavoro(){
     try{
@@ -7580,7 +7659,7 @@
     STATE.ingressoInCorso = true;
     this.disabled = true;
     var giro = STATE.ingressoGiro = (STATE.ingressoGiro || 0) + 1;
-    setTimeout(function(){ if(STATE.ingressoGiro === giro && byId('gate').style.display !== 'none') ingressoLibera(); }, 15000);
+    setTimeout(function(){ if(STATE.ingressoGiro === giro && byId('gate').style.display !== 'none') ingressoLibera(); }, 25000);
     // rileggi la classe/archivio (magari caricati dal docente in un'altra scheda)
     try{ var c=localStorage.getItem('cf_classe'); if(c) CLASSE=JSON.parse(c); }catch(e){}
     try{ var a2=localStorage.getItem('cf_archivio'); if(a2) FATTURE=JSON.parse(a2); }catch(e){}
@@ -7952,6 +8031,34 @@
       }
     } else { goGate(); }
   }catch(e){ goGate(); }
+  /* Controllo silenzioso del collegamento: parte all'apertura e ripete ogni 15 secondi finché il telefono non
+     riesce a raggiungere il cloud. Serve a scoprire i telefoni senza linea PRIMA della verifica, non durante.
+     Se il cloud risponde, l'alunno non vede assolutamente niente. (18/09/2026) */
+  (function(){
+    if(!SB) return;
+    var avviso = byId('err-alunno');
+    var mostraGuaio = function(){
+      if(byId('gate').style.display === 'none') return;
+      if(!avviso || avviso.textContent) return;   // non calpesto un messaggio già scritto dall'ingresso
+      avviso.textContent = 'Questo telefono non riesce a collegarsi: dillo al prof.';
+      avviso.setAttribute('data-rete', '1');
+    };
+    var togliGuaio = function(){
+      if(avviso && avviso.getAttribute('data-rete') === '1'){ avviso.textContent = ''; avviso.removeAttribute('data-rete'); }
+    };
+    var prova = function(){
+      if(byId('gate').style.display === 'none') return;   // solo sulla schermata del PIN: mentre l'alunno
+                                                          // lavora ci pensa il battito, niente richieste in più
+      try{
+        SB.from('ced_config').select('id').eq('id', 1).maybeSingle().then(function(r){
+          if(!r || r.error){ mostraGuaio(); return; }
+          togliGuaio();
+        }, function(){ mostraGuaio(); });
+      }catch(e){ mostraGuaio(); }
+    };
+    prova();
+    setInterval(prova, 15000);
+  })();
   /* fine boot */
 })();
 </script>
