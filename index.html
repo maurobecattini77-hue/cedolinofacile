@@ -3052,13 +3052,26 @@
       }, function(){ if(!riprova()) cb && cb(null, 'rete'); });
     }catch(e){ if(!riprova()) cb && cb(null, 'rete'); }
   }
+  /* Gli esercizi marcati "verifica" il server li manda SOLO a chi li ha assegnati: quindi vanno chiesti col PIN.
+     All'ingresso l'archivio si carica un attimo PRIMA che STATE.studente esista: per questo il PIN appena
+     digitato viene tenuto in STATE.pinIngresso (19/09/2026). */
+  function pinPerEsercizi(){
+    var p = (STATE.studente && STATE.studente.pin) || STATE.pinIngresso || null;
+    if(!p){ try{ p = sessionStorage.getItem('cf_studente_attivo') || null; }catch(e){} }   // F5 a verifica aperta
+    return p;
+  }
+  // Una risposta chiesta SENZA PIN (all'apertura della pagina) che arriva quando l'alunno ormai e' noto non vale:
+  // non conterrebbe la sua verifica e la cancellerebbe dall'elenco. Si butta e si richiede col PIN.
+  function rispostaEserciziSuperata(pinChiesto){ return !sonoDocente() && !pinChiesto && !!pinPerEsercizi(); }
   function cloudCaricaContesto(cb){
     if(!SB){ cb && cb(); return; }
     try{
+      var pinChiesto = pinPerEsercizi();
       var chiamata = sonoDocente()
         ? SB.from('ced_config').select('archivio,assegnata_id,livello').eq('id', 1).maybeSingle()
-        : SB.rpc('cf_esercizi');
+        : SB.rpc('cf_esercizi', { p_pin: pinChiesto });
       chiamata.then(function(res){
+        if(rispostaEserciziSuperata(pinChiesto)){ cloudCaricaContesto(cb); return; }
         var cfg = (res && res.data) ? (sonoDocente() ? res.data : { archivio: res.data }) : null;
         if(cfg && cfg.archivio){ try{ FATTURE = adattaArchivio(cfg.archivio); buildRubrica(); }catch(e){} }
         if(cfg && cfg.assegnata_id){ STATE.assegnate = parseAssegnazione(cfg.assegnata_id); STATE.assegnataId = assegnPrimoId(cfg.assegnata_id); }
@@ -3078,10 +3091,12 @@
   function cloudAggiornaArchivio(cb){
     if(!SB){ cb && cb(false); return; }
     try{
+      var pinChiesto2 = pinPerEsercizi();
       var chiamata2 = sonoDocente()
         ? SB.from('ced_config').select('archivio').eq('id', 1).maybeSingle()
-        : SB.rpc('cf_esercizi');
+        : SB.rpc('cf_esercizi', { p_pin: pinChiesto2 });
       chiamata2.then(function(res){
+        if(rispostaEserciziSuperata(pinChiesto2)){ cloudAggiornaArchivio(cb); return; }
         var cfg = (res && res.data) ? (sonoDocente() ? res.data : { archivio: res.data }) : null;
         if(cfg && cfg.archivio){
           try{
@@ -3981,7 +3996,7 @@
        (La compilazione del cedolino lato alunno arriva col trapianto del compilatore.) */
     if(fx.tipo === 'cedolino'){
       return { id:fx.id, numero:numeroDaArchivio(fx), titolo:titoloDaArchivio(fx), difficolta:fx.difficolta,
-               tipo:'cedolino', consegna:(fx.consegna || ''),
+               tipo:'cedolino', consegna:(fx.consegna || ''), verifica:!!fx.verifica,
                testo:{ operazione:(fx.consegna || ''), discorsivo:{ manuale:(fx.testo && fx.testo.paragrafi) || [] } },
                soluzione:(fx.soluzione || null) };
     }
@@ -4061,6 +4076,7 @@
     window.scrollTo(0, 0);
   }
   function goGate(){
+    STATE.pinIngresso = null;   // chi esce non lascia il suo PIN in giro per la prossima richiesta degli esercizi
     // «Esci» mette al sicuro l'ULTIMO tasto prima di chiudere la sessione: senza questo, l'ultima modifica
     // ancora nel debounce andava persa (le altre uscite — «Torna ai compiti», «Le mie fatture» — già salvavano).
     try{ if(byId('editor') && byId('editor').style.display !== 'none') salvaLavoro(); }catch(e){}
@@ -7475,27 +7491,11 @@
     }
     var go = function(){
       var pin = STATE.studente ? STATE.studente.pin : '';
-      /* 19/09/2026. A classe sospesa (o da assente) l'alunno arriva qui con la VERIFICA ancora assegnata: quel
-         cedolino NON deve poterlo fare come compito, perche' dopo la consegna vedrebbe la soluzione della sua
-         verifica. Il server la nega comunque (cf_soluzione); qui lo tolgo anche dalla vista. In esercitazione no. */
-      var conElenco = function(){
-        cloudCompitiDone(pin, function(done){
-          STATE.compitiDone = done || [];
-          renderCompitiPicker();
-          show('menu-fatture');
-        });
-      };
-      STATE.inVerificaIds = [];
-      if(!SB || !pin){ conElenco(); return; }
-      try{
-        SB.rpc('cf_stato', { p_pin: pin }).then(function(r){
-          var d = (r && !r.error) ? r.data : null;
-          if(d && d.fattura_assegnata && !d.esercitazione){
-            STATE.inVerificaIds = parseAssegnazione(d.fattura_assegnata).map(function(x){ return x.id; });
-          }
-          conElenco();
-        }, function(){ conElenco(); });
-      }catch(e){ conElenco(); }
+      cloudCompitiDone(pin, function(done){
+        STATE.compitiDone = done || [];
+        renderCompitiPicker();
+        show('menu-fatture');
+      });
     };
     if((typeof FATTURE==='undefined' || !FATTURE || !FATTURE.length) && SB){ cloudCaricaContesto(function(){ go(); }); }
     else cloudAggiornaArchivio(function(){ go(); });   // sempre: la maschera dei compiti deve mostrare l'archivio di ADESSO
@@ -7510,7 +7510,9 @@
     var done = STATE.compitiDone || [];
     var list = byId('menu-list'); list.innerHTML = '';
     var tot = 0, fatti = 0;
-    (FATTURE || []).slice().sort(function(a, b){ return (parseInt(numeroFattura(a.id), 10) || 0) - (parseInt(numeroFattura(b.id), 10) || 0); }).forEach(function(f){
+    /* 19/09/2026, regola di Mauro: esercitazioni e compiti hanno TUTTE le loro soluzioni. Solo il cedolino che
+       nell'archivio porta "verifica": true non compare qui (e il server non ne da' mai la soluzione agli alunni). */
+    (FATTURE || []).filter(function(f){ return !f.verifica; }).sort(function(a, b){ return (parseInt(numeroFattura(a.id), 10) || 0) - (parseInt(numeroFattura(b.id), 10) || 0); }).forEach(function(f){
       tot++;
       var fatta = done.indexOf(f.id) !== -1; if(fatta) fatti++;
       var row = document.createElement('div'); row.className = 'menu-row' + (fatta ? ' fatta' : '');
@@ -7520,10 +7522,7 @@
       var s = document.createElement('div'); s.className = 's'; s.textContent = f.difficoltaNome ? ('Difficoltà ' + f.difficoltaNome) : 'Cedolino da compilare';
       info.appendChild(t); info.appendChild(s);
       var cta = document.createElement('div'); cta.className = 'menu-cta';
-      if((STATE.inVerificaIds || []).indexOf(f.id) !== -1){
-        // E' la sua verifica in corso: qui non si compila e non si vede la soluzione.
-        var iv = document.createElement('span'); iv.className = 'menu-done'; iv.textContent = 'In verifica'; iv.title = 'Questo cedolino è la tua verifica: si fa in classe.'; cta.appendChild(iv);
-      } else if(fatta){
+      if(fatta){
         var d = document.createElement('span'); d.className = 'menu-done'; d.textContent = '✓ Consegnato'; cta.appendChild(d);
         var vs = document.createElement('button'); vs.className = 'btn-ghost'; vs.textContent = 'Vedi soluzione'; vs.style.marginLeft = '8px';
         vs.addEventListener('click', function(){ apriSoluzioneCompito(f); }); cta.appendChild(vs);
@@ -7861,6 +7860,7 @@
     try{ var g=localStorage.getItem('cf_assegnata'); if(g){ STATE.assegnate=parseAssegnazione(g); STATE.assegnataId=assegnPrimoId(g); } }catch(e){}
     buildRubrica();
     var al = (CLASSE && CLASSE.alunni) ? CLASSE.alunni.find(function(a){ return a.pin === pin; }) : null;
+    STATE.pinIngresso = pin;
     if(al){
       // Le fatture le prendo dal cloud PRIMA di entrare, SEMPRE: senza archivio l'alunno resterebbe
       // piantato su «In attesa» pur avendo la verifica assegnata, e con l'archivio vecchio in cache
