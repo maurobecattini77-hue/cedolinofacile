@@ -847,7 +847,7 @@
       <div id="gate-doc" style="display:none;">
         <h1 class="gate-title">Accesso docente</h1>
         <p class="gate-sub">Email e password del tuo accesso.</p>
-        <input id="in-mail" class="pass-input" type="email" placeholder="Email" autocomplete="username" value="maurobecattini77@gmail.com" style="margin-bottom:10px;" />
+        <input id="in-mail" class="pass-input" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:10px;" />
         <input id="in-pass" class="pass-input" type="password" placeholder="Password" autocomplete="current-password" />
         <div class="gate-err" id="err-docente"></div>
         <button class="btn-entra" id="btn-entra-docente">Entra ›</button>
@@ -7253,7 +7253,13 @@
   /* =========================================================
      WIRING
      ========================================================= */
-  byId('link-docente').addEventListener('click', function(){ byId('gate-pin').style.display='none'; byId('gate-doc').style.display=''; byId('err-alunno').textContent=''; byId('in-pass').focus(); });
+  byId('link-docente').addEventListener('click', function(){
+    byId('gate-pin').style.display='none'; byId('gate-doc').style.display=''; byId('err-alunno').textContent='';
+    // l'email la ricorda questo computer, non la pagina
+    var m = null; try{ m = localStorage.getItem('cf_mail_docente'); }catch(e){}
+    if(m && !byId('in-mail').value) byId('in-mail').value = m;
+    byId(m ? 'in-pass' : 'in-mail').focus();
+  });
   byId('link-alunno').addEventListener('click', function(){ byId('gate-doc').style.display='none'; byId('gate-pin').style.display=''; byId('err-docente').textContent=''; byId('in-pin').focus(); });
   byId('in-pin').addEventListener('input', function(){ this.value = this.value.replace(/\D/g,''); byId('err-alunno').textContent=''; });
   byId('in-pin').addEventListener('keydown', function(e){ if(e.key==='Enter') byId('btn-entra-alunno').click(); });
@@ -7755,6 +7761,7 @@
           return;
         }
         err.textContent = '';
+        try{ localStorage.setItem('cf_mail_docente', mail); }catch(e){}   // la ricorda solo questo computer
         try{ sessionStorage.setItem('cf_docente_attivo', '1'); }catch(e){} // dopo un refresh resta nella dashboard
         renderDocente(); show('docente'); startCollegatiTimer();
       }, function(){ err.textContent = 'Non riesco a verificare i permessi adesso.'; });
