@@ -1526,7 +1526,16 @@
       }).then(function(res){
         // Rete muta = NON SO NULLA: non deduco niente e riprovo al battito dopo. Mai buttare fuori nessuno
         // per un silenzio della rete (18/09/2026).
-        if(!res || res.error || !res.data || res.data.ok === false) return;
+        if(!res || res.error || !res.data) return;
+        if(res.data.ok === false){
+          // Il cloud dice: «questo dispositivo non comanda piu' questo PIN». Succede quando un altro
+          // dispositivo (o un'altra scheda) e' entrato dopo. Due conferme di fila e mi chiudo, invece di
+          // lasciare l'alunno a scrivere in un foglio che non viene piu' salvato.
+          STATE.rifiutiBattito = (STATE.rifiutiBattito || 0) + 1;
+          if(STATE.rifiutiBattito >= 2 && !STATE.consegnata){ STATE.rifiutiBattito = 0; terminaSessionePerAltroDispositivo(); }
+          return;
+        }
+        STATE.rifiutiBattito = 0;
         var riga = res.data;
         if(!STATE.studente || STATE.modalitaCompiti) return;
         if(STATE.consegnaWatch){ try{ applicaConsegnaWatcher(riga); }catch(e){} }
