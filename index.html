@@ -1904,11 +1904,24 @@
   }
   // Assegnazione cambiata dal docente, o alunno segnato assente: me ne accorgo dalla riga del battito, e solo
   // ALLORA faccio il giro completo (che e' quello che apre i pop-up). In condizioni normali: zero richieste.
+  // true = nell'assegnazione c'e' un esercizio che questo dispositivo non ha ancora (una verifica vera arriva
+  // solo a chi ce l'ha assegnata, quindi DOPO l'assegnazione): ho richiesto l'archivio, si riprova al giro dopo.
+  // Una richiesta sola per ogni assegnazione diversa, senza insistere. (19/09/2026)
+  function archivioDaRichiedere(lista){
+    var manca = (lista || []).some(function(x){ return !FATTURE.some(function(f){ return f.id === x.id; }); });
+    if(!manca) return false;
+    var firma = serializeAssegnazione(lista);
+    if(STATE.archivioChiestoPer === firma) return false;
+    STATE.archivioChiestoPer = firma;
+    cloudAggiornaArchivio(function(){});
+    return true;
+  }
   function controllaAssegnazioneDaRiga(riga){
     if(!riga || !STATE.studente || STATE.consegnata) return;
     if(byId('attesa').style.display !== 'none' || byId('blocco').style.display !== 'none') return;
     if(STATE.assModaleAperta) return;
     if(riga.assente){ terminaSessioneVerifica(); return; }
+    if(archivioDaRichiedere(parseAssegnazione(riga.fattura_assegnata))) return;
     var oraStr = (riga.fattura_assegnata || '');
     var mieStr = (STATE.mieAssegnate || []).map(function(x){ return x.id + ':' + (x.liv || 1); }).join(',');
     if(STATE.ultimaAssegnStr === undefined) STATE.ultimaAssegnStr = oraStr;
@@ -2344,7 +2357,7 @@
         SB.rpc('cf_consegna', {
           p_pin: payload.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
           p_fattura_id: payload.fattura_id, p_modalita: payload.modalita,
-          p_risposte: payload.risposte, p_tutte_fatte: !!STATE.consegnata
+          p_risposte: payload.risposte, p_tutte_fatte: null   // lo stato lo scrive cf_dopo_consegna (19/09/2026)
         }).then(function(res){
           if(res && !res.error && res.data === true){ finish(true); return; }
           if(tent < 3){ tent++; setTimeout(manda, tent * 2000); return; }
@@ -2778,14 +2791,14 @@
      era li' col cedolino aperto. Ora pagehide salva solo il lavoro; la presenza la cancellano «Esci» e il
      tempo (40 secondi senza battito). E appena la pagina torna davanti, si batte SUBITO. */
   try{ window.addEventListener('pagehide', function(){ if(STATE.studente){ try{ if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; } pushBozzaCloud(); }catch(e){} } }); }catch(e){}
-  function riprendiPresenza(){ if(STATE.studente && STATE.proprietario) startPresenza(); }
+  function riprendiPresenza(){ STATE.salutato = false; if(STATE.studente && STATE.proprietario) startPresenza(); }
   try{ window.addEventListener('pageshow', riprendiPresenza); }catch(e){}
   /* Ultimo istante prima che il telefono congeli la pagina ('freeze'), e primo istante dopo il risveglio
      ('resume'): sono i due momenti in cui Android decide se questa app «c'e' ancora». Al congelamento ridico
      che sono in secondo piano (messaggio keepalive, l'unico che riesce a partire); al risveglio ribatto subito,
      cosi' nella dashboard l'alunno non sfarfalla mai. */
   try{ document.addEventListener('freeze', function(){
-    if(STATE.studente && STATE.proprietario){
+    if(STATE.studente && STATE.proprietario && !STATE.salutato){
       rpcSubito('cf_battito', {
         p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
         p_fattura: (STATE.assegnataId || null),
@@ -2800,8 +2813,10 @@
     /* Va in secondo piano: lo dico SUBITO e con il messaggio che parte comunque (rpcSubito), perche' un attimo
        dopo il telefono congela la pagina e il battito normale morirebbe per strada. E' questo messaggio che
        tiene l'alunno «Collegato» nella dashboard mentre ha la scheda abbassata o lo schermo spento: senza,
-       dopo 40 secondi risultava «Non collegato» pur avendo l'app aperta (Mauro, 18/09/2026). */
-    if(STATE.studente && STATE.proprietario){
+       dopo 40 secondi risultava «Non collegato» pur avendo l'app aperta (Mauro, 18/09/2026).
+       (19/09/2026) Ma NON dopo il saluto di chiusura: mentre la pagina muore il browser spara ancora questo
+       evento, e il battito partito dopo «ho chiuso» lo sorpassava e rimetteva l'alunno «collegato» per 20 secondi. */
+    if(STATE.studente && STATE.proprietario && !STATE.salutato){
       rpcSubito('cf_battito', {
         p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
         p_fattura: (STATE.assegnataId || null),
@@ -2818,6 +2833,7 @@
     if(STATE.studente && STATE.proprietario){
       // Con la pagina che sta morendo la richiesta normale spesso non parte: qui serve il messaggio keepalive,
       // se no la chiusura non arriva al cloud e la dashboard resta a guardare un fantasma.
+      STATE.salutato = true; stopPresenza();   // dopo il saluto la pagina tace: nessun battito deve sorpassarlo
       rpcSubito('cf_esci', { p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo() });
     }
   }); }catch(e){}
@@ -4474,6 +4490,7 @@
     if(SB){
       cloudLeggiContestoAlunno(STATE.studente.pin, function(ctx){
         if(!inAttesa()) return; // nel frattempo è già entrato
+        if(archivioDaRichiedere((ctx && ctx.lista) || [])) return;   // si riprova al giro dopo, con l'archivio nuovo
         var lista = ((ctx && ctx.lista) || []).filter(function(x){ return FATTURE.some(function(f){ return f.id === x.id; }); });
         if(lista.length || (ctx && ctx.stato === 'consegnato')){
           stopAttesaWatcher();
@@ -8160,7 +8177,9 @@
         var tutteFatte = multiTutteConsegnate();
         // Nel cloud: "consegnato" SOLO quando l'alunno ha finito TUTTE le fatture assegnate; altrimenti "in_corso".
         if(SB && STATE.studente){
-          try{ SB.from('ced_studenti').update({ ultimo_accesso:new Date().toISOString(), fattura_corrente:null, consegnata:tutteFatte, stato:(tutteFatte?'consegnato':'in_corso') }).eq('pin', STATE.studente.pin).then(function(){}, function(){}); }catch(e){}
+          // Era rimasta una scrittura diretta sulla tabella: a permessi chiusi non faceva niente, e lo stato lo metteva
+          // cf_consegna con «consegnato» gia' al PRIMO cedolino (e perfino alla consegna di un compito a casa).
+          try{ SB.rpc('cf_dopo_consegna', { p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(), p_tutte_fatte: !!tutteFatte }).then(function(){}, function(){}); }catch(e){}
           if(CLOUD_STUD[STATE.studente.pin]){ CLOUD_STUD[STATE.studente.pin].consegnata = tutteFatte; CLOUD_STUD[STATE.studente.pin].stato = (tutteFatte?'consegnato':'in_corso'); }
         }
         try{ if(tutteFatte && STATE.studente) sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
