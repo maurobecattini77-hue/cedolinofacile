@@ -355,6 +355,10 @@
   tr.riga-assente{ opacity:.5; }
   /* Il cognome è cliccabile (segna assente/presente): al passaggio del mouse GRASSETTO, mai sottolineato. */
   td.nome-cell{ cursor:pointer; }
+  /* PALLINO ROSSO (21/09/2026): lo stesso della dashboard verifiche. Lampeggia accanto al nome di chi ha
+     abbassato o lasciato la pagina del cedolino mentre lavora. */
+  .dot-fuori{ display:inline-block; width:12px; height:12px; border-radius:50%; background:#e0261f; margin-left:9px; vertical-align:middle; box-shadow:0 0 0 3px rgba(224,38,31,.22); animation: dotFuori .6s steps(1, end) infinite; }
+  @keyframes dotFuori{ 0%{ opacity:1; } 50%{ opacity:.12; } }
   td.nome-cell:hover{ font-weight:700; }
   tr:hover > td.nome-cell{ background:#f7f8fa; }
   .btn-mini{ border:1px solid var(--line2,#dbe4f2); background:#fff; color:#3f6b52; border-radius:8px; padding:6px 12px; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
@@ -1176,6 +1180,26 @@
       }).catch(function(){});
     }catch(e){ return null; }
   }
+  /* PALLINO ROSSO (21/09/2026, chiesto da Mauro: «esattamente come nella dashboard delle verifiche»).
+     Mentre l'alunno lavora, la pagina dice al cloud se e' DAVANTI o no: scheda cambiata, finestra abbassata,
+     altra app, schermo spento, clic fuori dalla finestra. Lo dice dentro il battito (p_fuori) e, a ogni
+     cambio, subito, col messaggio che parte anche a pagina congelata (rpcSubito). p_seq e' l'ora di questo
+     dispositivo, sempre crescente: il cloud ignora un segnale piu' vecchio dell'ultimo, cosi' un «sono fuori»
+     rimasto per strada non puo' sorpassare il «sono tornato». Solo il pallino: niente blocchi, niente avvisi. */
+  var ULTIMO_SEQ = 0;
+  function prossimoSeq(){ var n = Date.now(); if(n <= ULTIMO_SEQ) n = ULTIMO_SEQ + 1; ULTIMO_SEQ = n; return n; }
+  function fuoriAdesso(){ try{ return document.visibilityState === 'hidden' || !document.hasFocus(); }catch(e){ return false; } }
+  function segnalaPagina(fuori){
+    if(!STATE.studente || !STATE.proprietario || STATE.salutato || !STATE.presenzaTimer) return;
+    rpcSubito('cf_battito', {
+      p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
+      p_fattura: (STATE.assegnataId || null),
+      p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
+      p_consegnata: !!STATE.consegnata,
+      p_sfondo: (document.visibilityState === 'hidden'),
+      p_fuori: !!fuori, p_seq: prossimoSeq()
+    });
+  }
   // cb(ok, errore): «Carica classe» e' l'atto che mette gli alunni NEL CLOUD. Se fallisce, loro col PIN
   // non entrano proprio (per il sistema non esistono), quindi l'esito non si puo' ignorare: prima l'app
   // diceva «Classe caricata: 10 alunni» anche quando il cloud non aveva ricevuto niente, e te ne accorgevi
@@ -1599,7 +1623,8 @@
         p_consegnata: !!STATE.consegnata,
         // App aperta ma in secondo piano (scheda abbassata, schermo del telefono spento): per il docente
         // l'alunno e' ancora collegato. «Non collegato» solo quando la pagina viene chiusa davvero.
-        p_sfondo: (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+        p_sfondo: (typeof document !== 'undefined' && document.visibilityState === 'hidden'),
+        p_fuori: fuoriAdesso(), p_seq: prossimoSeq()   // il pallino rosso del docente
       }).then(function(res){
         STATE.battitoInVolo = 0;
         // Rete muta = NON SO NULLA: non deduco niente e riprovo al battito dopo. Mai buttare fuori nessuno
@@ -2902,13 +2927,14 @@
         p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
         p_fattura: (STATE.assegnataId || null),
         p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
-        p_consegnata: !!STATE.consegnata, p_sfondo: true
+        p_consegnata: !!STATE.consegnata, p_sfondo: true,
+        p_fuori: true, p_seq: prossimoSeq()
       });
     }
   }); }catch(e){}
   try{ document.addEventListener('resume', riprendiPresenza); }catch(e){}
   try{ document.addEventListener('visibilitychange', function(){
-    if(document.visibilityState === 'visible'){ riprendiPresenza(); return; }
+    if(document.visibilityState === 'visible'){ riprendiPresenza(); segnalaPagina(fuoriAdesso()); return; }
     /* (19/09/2026) Prima di tutto il LAVORO: un telefono che va in secondo piano puo' essere congelato o ucciso
        senza preavviso. Se c'e' qualcosa di scritto che non e' ancora al sicuro (salvataggio o invio in attesa, o
        per strada), lo salvo adesso e lo spedisco con l'invio che parte anche a pagina congelata. */
@@ -2931,10 +2957,15 @@
         p_pin: STATE.studente.pin, p_sess: sessMia(), p_dispositivo: idDispositivo(),
         p_fattura: (STATE.assegnataId || null),
         p_livello: (typeof LIVELLO !== 'undefined' ? String(LIVELLO) : null),
-        p_consegnata: !!STATE.consegnata, p_sfondo: true
+        p_consegnata: !!STATE.consegnata, p_sfondo: true,
+        p_fuori: true, p_seq: prossimoSeq()
       });
     }
   }); }catch(e){}
+  /* PALLINO ROSSO: il clic fuori dalla finestra (un'altra finestra, un altro programma) non cambia la
+     visibilita' della pagina, quindi lo dicono 'blur' e 'focus'. */
+  try{ window.addEventListener('blur', function(){ segnalaPagina(true); }); }catch(e){}
+  try{ window.addEventListener('focus', function(){ segnalaPagina(fuoriAdesso()); }); }catch(e){}
   /* CHIUSURA VERA della pagina (la X, non lo schermo che si spegne): lo dico al cloud, cosi' nella
      dashboard compare «Non collegato» subito. `persisted` distingue la chiusura dal semplice passaggio in
      secondo piano: e' la regola che mi ha dato Mauro — se per rientrare serve il PIN, allora ero scollegato. */
@@ -2988,6 +3019,45 @@
         cb && cb();
       }, function(){ cb && cb(); });
     }catch(e){ cb && cb(); }
+  }
+  /* PALLINO ROSSO nella dashboard (21/09/2026). Una lettura leggera al secondo, solo della classe aperta:
+     il giro grosso ogni 4 secondi sarebbe troppo lento, un'uscita lampo sfuggirebbe. Il pallino vale SOLO per
+     chi e' «In corso» e collegato: acceso finche' e' fuori dalla pagina e per 3 secondi dopo il rientro.
+     Stesse misure della dashboard verifiche (ver_segnali_leggi). */
+  var PALLINI = {};
+  var PALLINO_CODA_MS = 3000;
+  function pallinoAcceso(pin){
+    var g = PALLINI[pin]; if(!g) return false;
+    var st = statoAlunno(pin);
+    if(!st.on || st.done || !attaccatoAllApp(g)) return false;
+    if(g.fuori) return true;
+    if(!g.rientrato_il) return false;
+    return (Date.now() + SCARTO_ORA_CLOUD - new Date(g.rientrato_il).getTime()) < PALLINO_CODA_MS;
+  }
+  function disegnaPallini(){
+    var righe = document.querySelectorAll('#roster-body tr[data-pin]');
+    Array.prototype.forEach.call(righe, function(tr){
+      var cella = tr.querySelector('.nome-cell'); if(!cella) return;
+      var dot = cella.querySelector('.dot-fuori');
+      var acceso = pallinoAcceso(tr.getAttribute('data-pin'));
+      if(acceso && !dot){
+        dot = document.createElement('span'); dot.className = 'dot-fuori';
+        dot.title = 'Ha abbassato o lasciato la pagina del cedolino';
+        cella.appendChild(dot);
+      } else if(!acceso && dot){ cella.removeChild(dot); }
+    });
+  }
+  function refreshPallini(){
+    if(!SB || !(typeof CLASSE !== 'undefined' && CLASSE && CLASSE.classe)){ disegnaPallini(); return; }
+    if(STATE.pallinoInVolo && (Date.now() - STATE.pallinoInVolo) < 4000){ disegnaPallini(); return; }
+    STATE.pallinoInVolo = Date.now();
+    try{
+      SB.from('ced_studenti').select('pin,ultimo_accesso,fuori,rientrato_il').eq('classe', CLASSE.classe).then(function(res){
+        STATE.pallinoInVolo = 0;
+        if(res && !res.error && res.data){ PALLINI = {}; res.data.forEach(function(r){ PALLINI[r.pin] = r; }); }
+        disegnaPallini();
+      }, function(){ STATE.pallinoInVolo = 0; });
+    }catch(e){ STATE.pallinoInVolo = 0; }
   }
   function cloudAssegnaStudente(pin, fatturaId, liv){
     if(SB){ try{ SB.from('ced_studenti').update({ fattura_assegnata:(fatturaId||null), livello_assegnato:(liv!=null?String(liv):null) }).eq('pin', pin).then(function(){}, function(){}); }catch(e){} }
@@ -3150,6 +3220,7 @@
     // il refresh periodico aggiorna SOLO stato e conteggi: non ricostruisce le tendine
     allineaOraCloud(); STATE.giriDashboard = 0;
     STATE.collegatiTimer = setInterval(function(){ if((++STATE.giriDashboard % 75) === 0) allineaOraCloud(); cloudDocenteHeartbeat(); refreshCloudStud(function(){ refreshConsegne(refreshStati); }); }, 4000);
+    STATE.pallinoTimer = setInterval(refreshPallini, 1000);   // il pallino rosso: lettura leggera, una al secondo
   }
   /* 18/09/2026 — LA FIGURACCIA DELLA 5F. Mezza classe col PIN GIUSTO si sentiva dire «PIN non riconosciuto».
      Colpa di qui: supabase-js NON rifiuta la promessa quando la rete cade, RISOLVE con { data:null, error:... }.
@@ -3340,7 +3411,7 @@
     });
     document.body.appendChild(ov);
   }
-  function stopCollegatiTimer(){ if(STATE.collegatiTimer){ clearInterval(STATE.collegatiTimer); STATE.collegatiTimer = null; } }
+  function stopCollegatiTimer(){ if(STATE.collegatiTimer){ clearInterval(STATE.collegatiTimer); STATE.collegatiTimer = null; } if(STATE.pallinoTimer){ clearInterval(STATE.pallinoTimer); STATE.pallinoTimer = null; } }
   /* =============================================================== */
   /* Quando true (livello Manuale) la tendina della rubrica NON compare: l'alunno digita a mano. */
   var ANA_SEARCH_OFF = false;
@@ -4591,6 +4662,7 @@
       tr.appendChild(tdN); tr.appendChild(tdNome); tr.appendChild(tdPin); tr.appendChild(tdAss); tr.appendChild(tdSt); tr.appendChild(tdAz); tr.appendChild(buildVotoCell(a)); tr.appendChild(buildValutaCell(a));
       tb.appendChild(tr);
     });
+    disegnaPallini();   // la tabella ridisegnata riparte senza pallini: li rimetto subito
   }
 
   /* ---------- Alunno ---------- */
@@ -5804,6 +5876,20 @@
       corpo.appendChild(barraSez);
       sincSezioni();
 
+      /* (21/09/2026, chiesto da Mauro) Il totale della retribuzione si vedeva solo in alto, nella testata del
+         blocco: arrivati ai contributi i ragazzi non sapevano da quale numero partire. Ora sta anche in fondo,
+         col suo secondo nome, e due righe in grigio dicono a che cosa serve. Il conto dei contributi resta loro. */
+      var strLorda = document.createElement('div');
+      strLorda.className = 'risultato risultato-lorda';
+      strLorda.innerHTML = '<span class="l">Retribuzione lorda = imponibile previdenziale</span>' +
+                           '<span class="v" data-lorda>0,00</span>';
+      corpo.appendChild(strLorda);
+      var notaLorda = document.createElement('p');
+      notaLorda.className = 'detr-spiega';
+      notaLorda.textContent = 'L’imponibile previdenziale coincide con la retribuzione lorda, cioè con la somma di tutte le voci fisse e variabili. ' +
+                              'È su questo importo che si applica l’aliquota dei contributi previdenziali (di norma il 9,19 %).';
+      corpo.appendChild(notaLorda);
+
       bl._id = 'retr';
       bl._leggi = function(){
         var sezioni = [];
@@ -6732,11 +6818,13 @@
         b.querySelectorAll('[data-riga]').forEach(function(r){ if(r._valore) t += r._valore(); });
         var cel = b.querySelector('.blocco-h [data-tot]');
         if(cel) cel.textContent = euro(t);   /* le anagrafiche non hanno totale: non girano soldi */
+        var lo = b.querySelector('[data-lorda]');
+        if(lo) lo.textContent = euro(t);     /* la retribuzione lorda ripetuta in fondo al suo blocco */
       });
 
       /* L'imponibile fiscale non lo inventa l'app: retribuzione scritta dall'alunno
          meno i contributi scritti dall'alunno. Se sono sbagliati, resta sbagliato. */
-      var strisce = ed.querySelectorAll('.risultato');
+      var strisce = ed.querySelectorAll('.risultato:not(.risultato-lorda)');
       if(strisce.length){
         var retr = 0, blR = null;
         ed.querySelectorAll('.blocco').forEach(function(b){
