@@ -355,10 +355,9 @@
   tr.riga-assente{ opacity:.5; }
   /* Il cognome è cliccabile (segna assente/presente): al passaggio del mouse GRASSETTO, mai sottolineato. */
   td.nome-cell{ cursor:pointer; }
-  /* PALLINO ROSSO (21/09/2026): lo stesso della dashboard verifiche. Lampeggia accanto al nome di chi ha
-     abbassato o lasciato la pagina del cedolino mentre lavora. */
-  .dot-fuori{ display:inline-block; width:12px; height:12px; border-radius:50%; background:#e0261f; margin-left:9px; vertical-align:middle; box-shadow:0 0 0 3px rgba(224,38,31,.22); animation: dotFuori .6s steps(1, end) infinite; }
-  @keyframes dotFuori{ 0%{ opacity:1; } 50%{ opacity:.12; } }
+  /* PALLINO ROSSO (21/09/2026) accanto al nome di chi ha abbassato o lasciato la pagina del cedolino mentre
+     lavora. 22/09/2026, dopo la lezione in 5H: PICCOLO e ROSSO FISSO, niente lampeggio (Mauro: «dà fastidio»). */
+  .dot-fuori{ display:inline-block; width:8px; height:8px; border-radius:50%; background:#e0261f; margin-left:8px; vertical-align:middle; }
   td.nome-cell:hover{ font-weight:700; }
   tr:hover > td.nome-cell{ background:#f7f8fa; }
   .btn-mini{ border:1px solid var(--line2,#dbe4f2); background:#fff; color:#3f6b52; border-radius:8px; padding:6px 12px; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
@@ -3021,15 +3020,22 @@
     }catch(e){ cb && cb(); }
   }
   /* PALLINO ROSSO nella dashboard (21/09/2026). Una lettura leggera al secondo, solo della classe aperta:
-     il giro grosso ogni 4 secondi sarebbe troppo lento, un'uscita lampo sfuggirebbe. Il pallino vale SOLO per
-     chi e' «In corso» e collegato: acceso finche' e' fuori dalla pagina e per 3 secondi dopo il rientro.
-     Stesse misure della dashboard verifiche (ver_segnali_leggi). */
+     il giro grosso ogni 4 secondi sarebbe troppo lento, un'uscita lampo sfuggirebbe. Acceso finche' l'ULTIMO
+     segnale dell'alunno dice «fuori» e per 3 secondi dopo il rientro; vale per chi ha un esercizio in corso
+     (non per chi ha consegnato o e' segnato assente). Stesse misure della dashboard verifiche.
+     22/09/2026, LEZIONE IN 5H: il pallino «saltellava» da un alunno all'altro invece di stare acceso su tutti
+     quelli con la scheda dietro. Colpa della condizione «solo se collegato»: il telefono CONGELA la pagina
+     abbassata, i battiti si fermano, dopo 20 secondi l'alunno non e' piu' «collegato» e il pallino si spegneva
+     pur essendo lui ancora fuori; al primo battito che il telefono lasciava passare si riaccendeva per altri 20
+     secondi. Ora il pallino NON dipende dal collegamento: resta acceso finche' l'alunno non torna sulla pagina
+     (segnale «sono tornato») o non la chiude (cf_esci azzera «fuori»). Come nella dashboard verifiche. */
   var PALLINI = {};
   var PALLINO_CODA_MS = 3000;
+  var PALLINO_STATI = { in_corso:true, da_consegnare:true, bloccato:true };
   function pallinoAcceso(pin){
     var g = PALLINI[pin]; if(!g) return false;
     var st = statoAlunno(pin);
-    if(!st.on || st.done || !attaccatoAllApp(g)) return false;
+    if(st.done || st.assente || !PALLINO_STATI[g.stato || '']) return false;
     if(g.fuori) return true;
     if(!g.rientrato_il) return false;
     return (Date.now() + SCARTO_ORA_CLOUD - new Date(g.rientrato_il).getTime()) < PALLINO_CODA_MS;
@@ -3052,7 +3058,7 @@
     if(STATE.pallinoInVolo && (Date.now() - STATE.pallinoInVolo) < 4000){ disegnaPallini(); return; }
     STATE.pallinoInVolo = Date.now();
     try{
-      SB.from('ced_studenti').select('pin,ultimo_accesso,fuori,rientrato_il').eq('classe', CLASSE.classe).then(function(res){
+      SB.from('ced_studenti').select('pin,ultimo_accesso,fuori,rientrato_il,stato').eq('classe', CLASSE.classe).then(function(res){
         STATE.pallinoInVolo = 0;
         if(res && !res.error && res.data){ PALLINI = {}; res.data.forEach(function(r){ PALLINI[r.pin] = r; }); }
         disegnaPallini();
