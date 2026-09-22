@@ -8556,13 +8556,23 @@
   });
   function consegnaInClasse(eserc){
     if(STATE.consegnata) return;
-    var msgCons = eserc
+    /* 22/09/2026 (simulazione di verifica in 5G): la soluzione a confronto NON compariva mai in classe.
+       Due cause: (1) in modalita' verifica la pagina non la chiedeva nemmeno; (2) in esercitazione la
+       chiedeva a nessuno (l'archivio dell'alunno arriva SENZA soluzioni dal 18/09, e qui si usava ancora
+       STATE.soluzioneCorrente, sempre vuota). REGOLA DI MAURO (19/09): gli esercizi CED01-05 sono
+       esercitazioni e la soluzione si vede SEMPRE dopo la consegna, anche in classe; solo una verifica
+       vera (marcata "verifica": true nell'archivio) resta senza soluzione. La soluzione si chiede al cloud
+       DOPO la consegna riuscita (cf_soluzione la da' solo a chi ha gia' consegnato quel cedolino). */
+    var fAtt = (typeof FATTURE !== 'undefined' && FATTURE) ? FATTURE.find(function(x){ return x.id === STATE.assegnataId; }) : null;
+    var veraVerifica = !!(fAtt && fAtt.verifica) && !eserc;
+    var conSol = !veraVerifica;
+    var msgCons = conSol
       ? (STATE.multiMode
           ? 'Vuoi consegnare questo cedolino? Dopo la consegna vedrai subito la soluzione, ma non potrai più modificarlo.'
           : 'Vuoi consegnare l\'esercitazione? Dopo la consegna vedrai subito la soluzione, ma non potrai più modificarla.')
       : (STATE.multiMode
           ? 'Vuoi consegnare questo cedolino? Una volta consegnato non potrai più modificarlo né vedere le soluzioni.'
-          : 'Vuoi consegnare l\'esercitazione? Una volta consegnata non potrai più modificarla né vedere le soluzioni.');
+          : 'Vuoi consegnare la verifica? Una volta consegnata non potrai più modificarla né vedere le soluzioni.');
     showConfirm(msgCons, function(){
       try{ salvaLavoro(); }catch(e){}                 // metto al sicuro l'ultimo tasto PRIMA di segnare consegnata (poi salvaLavoro si blocca)
       STATE.consegnata = true;
@@ -8585,31 +8595,34 @@
         }
         try{ if(tutteFatte && STATE.studente) sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
         if(tutteFatte){ stopAssegnazioneWatcher(); stopConsegnaWatcher(); stopPresenza(); }
-        // ESERCITAZIONE: subito la soluzione a confronto (le 4 viste dei compiti), poi avanti come in verifica.
-        if(eserc){
-          var dopo = function(){
-            if(tutteFatte){
-              mostraBloccoMsg('✅', 'Esercitazione consegnata', 'Hai consegnato l\'esercitazione e hai visto la soluzione. Se il docente ti riammette, potrai rientrare.', '#2f7d54');
-              startBloccoWatcher();
-            } else { mostraMenuFatture(); }
-          };
+        var idCons = STATE.assegnataId;
+        var chiudi = function(){
+          if(tutteFatte){
+            mostraBloccoMsg('✅', (eserc ? 'Esercitazione consegnata' : 'Verifica consegnata'),
+              conSol ? 'Hai consegnato e hai visto la soluzione. Se il docente ti riammette, potrai rientrare.'
+                     : 'Hai consegnato la verifica: non puoi più modificarla e le soluzioni non sono visibili. Se il docente ti riammette, potrai rientrare.',
+              '#2f7d54');
+            startBloccoWatcher();
+          } else { mostraMenuFatture(); }
+        };
+        // VERIFICA VERA: la consegna è DEFINITIVA e SENZA feedback. Non mostriamo MAI la soluzione all'alunno.
+        if(!conSol){ chiudi(); return; }
+        // ESERCITAZIONE (in classe o col nome di verifica): subito la soluzione a confronto (le 4 viste dei compiti).
+        conSoluzione(idCons, function(sol){
+          if(sol){
+            STATE.soluzioneCorrente = sol;
+            try{ STATE.correctCortesiaHTML = buildCortesia(sol); }catch(e){}
+            try{ mostraSoluzioneCompilatore(true); commitValues(byId('editor')); STATE.correctDashboardHTML = byId('editor').innerHTML; }catch(e){}
+          }
           mostraViewerCompiti({ esciTesto: (tutteFatte ? 'Ho finito' : '← I miei cedolini'), fatture:[{
-            num: numeroFattura(STATE.assegnataId),
+            id: idCons,
+            num: numeroFattura(idCons),
             cortesiaAlunno: STATE.myCortesiaHTML || '',
             cortesiaCorretta: STATE.correctCortesiaHTML || '',
             dashboardAlunno: STATE.myDashboardHTML || '',
             dashboardCorretta: STATE.correctDashboardHTML || ''
-          }] }, 'alunno', dopo);
-          return;
-        }
-        // VERIFICA: la consegna è DEFINITIVA e SENZA feedback. Non mostriamo MAI la soluzione all'alunno
-        // (né cortesia corretta, né dashboard corretta). Le soluzioni restano salvate nel cloud per l'export docente.
-        if(tutteFatte){
-          mostraBloccoMsg('✅', 'Verifica consegnata', 'Hai consegnato la verifica: non puoi più modificarla e le soluzioni non sono visibili. Se il docente ti riammette, potrai rientrare.', '#2f7d54');
-          startBloccoWatcher();
-        } else {
-          mostraMenuFatture(); // restano fatture da fare → torna al menù (nessuna soluzione mostrata)
-        }
+          }] }, 'alunno', chiudi);
+        });
       });
     });
   }
