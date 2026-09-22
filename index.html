@@ -7771,8 +7771,22 @@
     var fatture = (snap && Array.isArray(snap.fatture) && snap.fatture.length)
       ? snap.fatture.map(function(f){ return { id:f.id, num:f.num, nonSvolta:!!f.nonSvolta, cortesiaAlunno:f.cortesiaAlunno || '', cortesiaCorretta:f.cortesiaCorretta || '', dashboardAlunno:f.dashboardAlunno || '', dashboardCorretta:f.dashboardCorretta || '' }; })
       : (val.items || []).map(function(it){ return { id:it.fattura_id, num:it.num, nonSvolta:false, cortesiaAlunno:'', cortesiaCorretta:'', dashboardAlunno:'', dashboardCorretta:'' }; });
-    mostraViewerCompiti({ pin:(STATE.studente ? STATE.studente.pin : ''), nome:(val.nome || ''), cognome:(STATE.studente ? (STATE.studente.cognome || '') : ''), valutazione:val, cf:0, fatture:fatture }, 'alunno-valuta', exitFn);
-    VC.ct = 4; vcGo();
+    /* 22/09/2026: le versioni corrette nella fotografia sono vuote per tutte le consegne dal 18/09 (l'alunno non ha la
+       soluzione quando consegna). Prima di aprire il dettaglio chiedo al cloud la soluzione di ogni cedolino (cf_soluzione
+       la da' a chi l'ha consegnato, salvo verifica vera): finisce in FATTURE e la vista ridisegna da li' cedolino e
+       dashboard corretti. Se il cloud non risponde, si apre lo stesso con quello che c'e'. */
+    var apri = function(){
+      mostraViewerCompiti({ pin:(STATE.studente ? STATE.studente.pin : ''), nome:(val.nome || ''), cognome:(STATE.studente ? (STATE.studente.cognome || '') : ''), valutazione:val, cf:0, fatture:fatture }, 'alunno-valuta', exitFn);
+      VC.ct = 4; vcGo();
+    };
+    var ids = fatture.map(function(f){ return f.id; }).filter(Boolean);
+    var i = 0;
+    var prossima = function(){
+      if(i >= ids.length){ apri(); return; }
+      var id = ids[i++];
+      conSoluzione(id, function(){ prossima(); });
+    };
+    prossima();
   }
   // Pubblica i voti della CLASSE ATTIVA: gli alunni li vedono entrando col PIN (in modalità compiti).
   function pubblicaVoti(){
