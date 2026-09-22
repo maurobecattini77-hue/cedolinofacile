@@ -2733,7 +2733,11 @@
       Object.keys(byPin).forEach(function(pin){
         var s = byPin[pin];
         var ids = Object.keys(s.items).sort(function(a,b){ return (parseInt(numeroFattura(a),10)||0)-(parseInt(numeroFattura(b),10)||0); });
-        var fatture = ids.map(function(id){ var t=s.items[id]; return { num:numeroFattura(id), titolo:t.titolo, nonSvolta:false, cortesiaAlunno:t.cortesiaAlunno, cortesiaCorretta:t.cortesiaCorretta, dashboardAlunno:t.dashboardAlunno, dashboardCorretta:t.dashboardCorretta }; });
+        var fatture = ids.map(function(id){ var t=s.items[id];
+          // 22/09/2026: la versione corretta manca nelle consegne dal 18/09 (l'alunno non ha la soluzione): la ricostruisco dall'archivio.
+          var cortCorr = t.cortesiaCorretta || '', dashCorr = t.dashboardCorretta || '';
+          if(!cortCorr || !dashCorr){ var rc = correttaDaArchivio(id); if(!cortCorr) cortCorr = rc.cort; if(!dashCorr) dashCorr = rc.dash; }
+          return { num:numeroFattura(id), titolo:t.titolo, nonSvolta:false, cortesiaAlunno:t.cortesiaAlunno, cortesiaCorretta:cortCorr, dashboardAlunno:t.dashboardAlunno, dashboardCorretta:dashCorr }; });
         data.push({ pin:pin, nome:s.nome, cognome:s.cognome, nums:fatture.map(function(f){ return f.num; }).join(' · '), fatture:fatture });
       });
       data.sort(function(a,b){ return profInCima(a,b) || (a.cognome||a.nome).localeCompare((b.cognome||b.nome), 'it'); });
@@ -8194,12 +8198,18 @@
     var fatture = ids.map(function(id){
       var rr = s.items[id].risposte || {};
       if(!cognome) cognome = rr.cognome || ((s.nome || '').split(' ')[0]) || '';
+      // 22/09/2026: dal 18/09 la consegna arriva SENZA versione corretta (l'alunno non ha la soluzione): qui si
+      // mostravano le fotografie salvate, cioe' due schede vuote. Ora, come nella Valuta e nell'export, la versione
+      // corretta si ricostruisce dall'archivio del docente (e con `id` la vista la ridisegna con l'impaginazione di oggi).
+      var cortCorr = rr.cortesiaCorretta || '', dashCorr = rr.dashboardCorretta || '';
+      if(!cortCorr || !dashCorr){ var rc = correttaDaArchivio(id); if(!cortCorr) cortCorr = rc.cort; if(!dashCorr) dashCorr = rc.dash; }
       return {
+        id: id,
         num: numeroFattura(id),
         cortesiaAlunno: rr.cortesiaAlunno || '',
-        cortesiaCorretta: rr.cortesiaCorretta || '',
+        cortesiaCorretta: cortCorr,
         dashboardAlunno: rr.dashboardAlunno || '',
-        dashboardCorretta: rr.dashboardCorretta || ''
+        dashboardCorretta: dashCorr
       };
     });
     var cf = ids.indexOf(fatturaId); if(cf < 0) cf = 0;
