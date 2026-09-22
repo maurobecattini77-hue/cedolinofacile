@@ -3075,6 +3075,11 @@
     var g = PALLINI[pin]; if(!g) return false;
     var st = statoAlunno(pin);
     if(st.done || st.assente || !PALLINO_STATI[g.stato || '']) return false;
+    /* 22/09/2026 sera, REGOLA DI MAURO (gia' data il 19/09 per la dashboard verifiche, e persa stamattina):
+       «se non e' collegato il pallino deve sparire subito, e' ovvio che puo' guardare il mondo». Niente pallino
+       su chi non e' collegato: guardo sia la lettura al secondo (PALLINI) sia quella che scrive «Non collegato»
+       nella riga (CLOUD_STUD), cosi' pallino e «Non collegato» non stanno mai insieme sulla stessa riga. */
+    if(!attaccatoAllApp(g) || !attaccatoAllApp(CLOUD_STUD[pin])) return false;
     if(g.fuori) return true;
     if(!g.rientrato_il) return false;
     return (Date.now() + SCARTO_ORA_CLOUD - new Date(g.rientrato_il).getTime()) < PALLINO_CODA_MS;
