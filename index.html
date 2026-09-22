@@ -1187,7 +1187,30 @@
      rimasto per strada non puo' sorpassare il «sono tornato». Solo il pallino: niente blocchi, niente avvisi. */
   var ULTIMO_SEQ = 0;
   function prossimoSeq(){ var n = Date.now(); if(n <= ULTIMO_SEQ) n = ULTIMO_SEQ + 1; ULTIMO_SEQ = n; return n; }
-  function fuoriAdesso(){ try{ return document.visibilityState === 'hidden' || !document.hasFocus(); }catch(e){ return false; } }
+  /* FINESTRA RIMPICCIOLITA (22/09/2026, chiesto da Mauro). Un alunno ha tenuto l'app davanti, col fuoco, in una
+     finestra piccola, e di fianco un altro browser da cui leggere: il pallino non si accendeva, perche' guardare
+     un'altra finestra non toglie il fuoco a nessuno. La pagina non vede le altre finestre, ma sa quanto e' grande
+     la sua rispetto allo schermo del dispositivo: se occupa meno del 90% in larghezza o dell'85% in altezza e'
+     «fuori» (finestra non ingrandita, schermo diviso, finestra mobile del telefono). Si confronta con lo schermo
+     GIA' senza la barra delle applicazioni (availWidth/availHeight), quindi vale per qualunque dispositivo.
+     Sui telefoni l'altezza non si guarda mentre si scrive in una casella: la tastiera puo' accorciare la finestra. */
+  function finestraRistretta(){
+    try{
+      var sw = screen.availWidth || screen.width, sh = screen.availHeight || screen.height;
+      var fw = window.outerWidth || window.innerWidth, fh = window.outerHeight || window.innerHeight;
+      if(!sw || !sh || !fw || !fh) return false;
+      // iPhone e iPad danno lo schermo sempre in verticale: lo giro se la finestra e' in orizzontale
+      if((window.innerWidth > window.innerHeight) !== (sw > sh)){ var t = sw; sw = sh; sh = t; }
+      if(fw < sw * 0.90) return true;
+      var tocco = false;
+      try{ tocco = window.matchMedia && window.matchMedia('(pointer: coarse)').matches; }catch(e){}
+      var a = document.activeElement;
+      var scrive = !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable));
+      if(tocco && scrive) return false;
+      return fh < sh * 0.85;
+    }catch(e){ return false; }
+  }
+  function fuoriAdesso(){ try{ return document.visibilityState === 'hidden' || !document.hasFocus() || finestraRistretta(); }catch(e){ return false; } }
   function segnalaPagina(fuori){
     if(!STATE.studente || !STATE.proprietario || STATE.salutato || !STATE.presenzaTimer) return;
     rpcSubito('cf_battito', {
@@ -2969,6 +2992,18 @@
      visibilita' della pagina, quindi lo dicono 'blur' e 'focus'. */
   try{ window.addEventListener('blur', function(){ segnalaPagina(true); }); }catch(e){}
   try{ window.addEventListener('focus', function(){ segnalaPagina(fuoriAdesso()); }); }catch(e){}
+  /* Finestra rimpicciolita o ingrandita, schermo diviso aperto o chiuso: lo dico subito (a trascinamento finito). */
+  var RIDIM_TIMER = null, ULTIMO_RISTRETTA = null;
+  try{ window.addEventListener('resize', function(){
+    if(RIDIM_TIMER) clearTimeout(RIDIM_TIMER);
+    RIDIM_TIMER = setTimeout(function(){
+      RIDIM_TIMER = null;
+      var r = finestraRistretta();
+      if(r === ULTIMO_RISTRETTA) return;
+      ULTIMO_RISTRETTA = r;
+      segnalaPagina(fuoriAdesso());
+    }, 400);
+  }); }catch(e){}
   /* CHIUSURA VERA della pagina (la X, non lo schermo che si spegne): lo dico al cloud, cosi' nella
      dashboard compare «Non collegato» subito. `persisted` distingue la chiusura dal semplice passaggio in
      secondo piano: e' la regola che mi ha dato Mauro — se per rientrare serve il PIN, allora ero scollegato. */
