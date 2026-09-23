@@ -2187,8 +2187,8 @@
     var inEditor = (byId('editor').style.display !== 'none');
     var staCompilandoRimossa = inEditor && !!STATE.assegnataId && rimosse.some(function(x){ return x.id === STATE.assegnataId; });
     var corpo = staCompilandoRimossa
-      ? 'Il docente ha modificato i cedolini assegnati: il cedolino che stai compilando verrà rimosso. Vuoi accettare il cambiamento (perdendo il lavoro su questo) oppure rifiutare e continuare?'
-      : 'Il docente ha modificato i cedolini assegnati: un cedolino che avevi iniziato verrà rimosso. Vuoi accettare il cambiamento (perdendo quel lavoro) oppure rifiutare e tenerlo?';
+      ? 'Il docente ha cambiato i cedolini assegnati: quello che stai compilando non è più tra questi. Il tuo lavoro resta salvato e lo ritrovi nei compiti. Vuoi accettare il cambiamento oppure rifiutarlo e continuare?'
+      : 'Il docente ha cambiato i cedolini assegnati: uno che avevi iniziato non è più tra questi. Il tuo lavoro resta salvato e lo ritrovi nei compiti. Vuoi accettare il cambiamento oppure rifiutarlo e tenerlo?';   // (24/09/2026) col foglio unico il lavoro non si perde piu'
     var ov = document.createElement('div'); ov.className = 'modal-overlay';
     ov.innerHTML = '<div class="modal-card" style="max-width:540px;">'
       + '<div class="prev-title" style="padding:18px 26px 4px; font-weight:800; font-size:16px; color:#3f6b52;">Assegnazione modificata dal docente</div>'
@@ -2199,18 +2199,16 @@
       + '</div></div>';
     ov.querySelector('.modal-btn-ok').addEventListener('click', function(){
       closeModal(ov); STATE.assModaleAperta = false;
-      // Accetta: butta via il lavoro delle fatture rimosse (che aveva iniziato) e adotta la nuova assegnazione.
-      rimosse.forEach(function(x){
-        try{ if(pin) localStorage.removeItem(chiaveLavoro(pin, x.id)); }catch(e){}
-        rimuoviIniziata(pin, x.id); rimuoviConsegnataLocale(pin, x.id);
-      });
+      // Accetta: adotta la nuova assegnazione. (24/09/2026) Il lavoro dei cedolini tolti NON si butta piu': e' il suo
+      // foglio, resta nel cloud e nei compiti lo ritrova «Svolto in classe · da consegnare».
+      rimosse.forEach(function(x){ rimuoviIniziata(pin, x.id); rimuoviConsegnataLocale(pin, x.id); });
       STATE.mieAssegnate = nuova; STATE.multiMode = nuova.length > 1;
       if(staCompilandoRimossa){
-        // stava compilando proprio una fattura tolta → deve uscirne
-        STATE.assegnataId = null; STATE.consegnata = false;
-        if(nuova.length > 1){ mostraMenuFatture(); }
-        else if(nuova.length === 1){ STATE.assegnataId = nuova[0].id; LIVELLO = Number(nuova[0].liv) || 1; try{ localStorage.setItem('cf_livello', String(nuova[0].liv || 1)); }catch(e){} entraAlunnoView(); }
-        else { goGate(); }
+        // stava compilando proprio un cedolino tolto → ne esce col lavoro salvato e rientra dalla porta normale,
+        // che sa anche se il cedolino nuovo l'ha gia' consegnato (allora vede il consegnato, non il foglio)
+        mettiAlSicuroLavoro();
+        STATE.assegnataId = null; STATE.consegnata = false; STATE.avviatoPin = null; STATE.avvioInCorsoDa = 0;
+        cloudLeggiContestoAlunno(pin, avviaAlunnoConLista);
       } else if(byId('menu-fatture').style.display !== 'none'){
         renderMenuFatture(); // era al menù → aggiorna la lista (compare la nuova, sparisce la tolta)
       }
