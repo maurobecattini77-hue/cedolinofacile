@@ -2010,13 +2010,11 @@
     STATE.mieAssegnate = []; STATE.assegnataId = null; STATE.multiMode = false; STATE.consegnata = false;
     byId('topbar-info').innerHTML = '';   // via i comandi della verifica ormai finita
     if(!pin || perReset){ goGate(); return; }
-    // Niente schermate inutili: dopo il Reset la classe passa ai COMPITI A CASA, quindi l'alunno ci finisce
-    // dentro direttamente (ed è anche dove trova il voto, se il docente l'ha pubblicato). Se invece il docente
-    // ha solo ricaricato la classe (nuova verifica in arrivo), torna al PIN: rientrerà quando glielo dice lui.
-    cloudModalitaAlunno(pin, function(mode){
-      if(mode === 'compiti'){ avviaCompitiACasa(); return; }
-      goGate();
-    });
+    // (24/09/2026) Sospendi, Assente, cedolino tolto: si va SEMPRE ai compiti (regola di Mauro), senza chiedere
+    // al cloud. Prima lo si chiedeva, e con la rete che perde la risposta l'alunno finiva sulla schermata del
+    // PIN (visto nel collaudo con la rete disturbata). Se poi il docente riassegna, il sorvegliante dei compiti
+    // lo riporta sul cedolino.
+    avviaCompitiACasa();
   }
   // GETTONE DI SESSIONE: un ALTRO dispositivo ha "piantato" il suo gettone (di solito dopo uno «Sblocca» del
   // docente) → questo dispositivo è stato sostituito. Si chiude da solo SENZA toccare il cloud (la riga ora è
@@ -2088,7 +2086,7 @@
     if(!riga || !STATE.studente || STATE.consegnata) return;
     if(byId('attesa').style.display !== 'none' || byId('blocco').style.display !== 'none') return;
     if(STATE.assModaleAperta) return;
-    if(riga.assente){ terminaSessioneVerifica(); return; }
+    if(riga.assente || riga.sospesa){ terminaSessioneVerifica(); return; }   // (24/09/2026) anche Sospendi, dal battito ogni 5 s, come in Fattura Facile
     if(archivioDaRichiedere(parseAssegnazione(riga.fattura_assegnata))) return;
     var oraStr = (riga.fattura_assegnata || '');
     var mieStr = (STATE.mieAssegnate || []).map(function(x){ return x.id + ':' + (x.liv || 1); }).join(',');
