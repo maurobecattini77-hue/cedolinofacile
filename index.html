@@ -8100,6 +8100,9 @@
     STATE.multiMode = false;
     STATE.solExitFn = null; STATE.ritornoFn = null; STATE.compitoInClasse = false;
     STATE.avvioGiro = (STATE.avvioGiro || 0) + 1;   // un avvio in classe ancora per strada non deve piu' toccare niente
+    // ...e il prossimo avvio in classe deve partire davvero: la lista dei compiti usa lo stesso riquadro del menu'
+    // dei cedolini, e senza questo la guardia «un avvio solo» scambiava i compiti per una sessione gia' aperta (24/09/2026).
+    STATE.avviatoPin = null; STATE.avvioInCorsoDa = 0;
     stopPresenza(); stopSessioneWatcher(); stopConsegnaWatcher(); stopAssegnazioneWatcher(); stopBloccoWatcher(); stopAttesaWatcher();
     var pinC = STATE.studente ? STATE.studente.pin : '';
     STATE.azzVisto = null; try{ if(pinC) STATE.azzVisto = localStorage.getItem('cf_azz_' + pinC); }catch(e){}
