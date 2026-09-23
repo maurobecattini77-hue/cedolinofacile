@@ -2534,7 +2534,9 @@
       if(done) return; done = true;
       if(ok){
         try{
-          if(STATE.bozzaMappa && delId && STATE.bozzaMappa[delId]){ delete STATE.bozzaMappa[delId]; pushBozzaCloud(); }
+          // (24/09/2026) il foglio consegnato si toglie dal cloud dicendolo esplicitamente (null): il cloud ora
+          // aggiorna foglio per foglio e non cancella piu' quello che un dispositivo non manda.
+          if(delId){ STATE.bozzaMappa = STATE.bozzaMappa || {}; STATE.bozzaMappa[delId] = null; pushBozzaCloud(); }
         }catch(e){}
       }
       if(cb) cb(ok);
@@ -8258,9 +8260,9 @@
     (lista || []).forEach(function(f){
       var riga = document.createElement('div'); riga.style.cssText = 'display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center;';
       if(lista.length > 1){ var n = document.createElement('span'); n.textContent = 'Cedolino ' + numeroFattura(f.id); n.style.cssText = 'color:var(--muted); font-size:14px;'; riga.appendChild(n); }
-      var b1 = document.createElement('button'); b1.className = 'btn-ghost'; b1.textContent = 'Rivedi la correzione';
+      var b1 = document.createElement('button'); b1.className = 'btn-ghost'; b1.style.fontFamily = 'inherit'; b1.textContent = 'Rivedi la correzione';
       b1.addEventListener('click', function(){ stopBloccoWatcher(); STATE.ritornoFn = ritorno; apriSoluzioneCompito(f); });
-      var b2 = document.createElement('button'); b2.className = 'btn-compila'; b2.textContent = 'Allenati';
+      var b2 = document.createElement('button'); b2.className = 'btn-green'; b2.style.fontFamily = 'inherit'; b2.textContent = 'Allenati';   // btn-compila ha lo stile solo dentro i menu'
       b2.addEventListener('click', function(){ stopBloccoWatcher(); STATE.ritornoFn = ritorno; apriEsercitazione(f); });
       riga.appendChild(b1); riga.appendChild(b2); host.appendChild(riga);
     });
