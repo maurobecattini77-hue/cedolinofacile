@@ -4660,7 +4660,7 @@
     b.classList.toggle('on', on);
     if(arco) arco.setAttribute('d', on ? 'M8 11V7a4 4 0 0 1 7.5-2' : 'M8 11V7a4 4 0 0 1 8 0v4');
     b.title = on
-      ? ('La classe ' + cl + ' è in ESERCITAZIONE: nessun blocco sul PIN, soluzione subito dopo la consegna. Clic per tornare in verifica.')
+      ? ('La classe ' + cl + ' è in ESERCITAZIONE: nessun blocco sul PIN, si entra e si rientra da qualunque dispositivo. Clic per tornare in verifica.')
       : ('La classe ' + cl + ' è in VERIFICA: chi rientra col PIN viene bloccato finché non lo sblocchi. Clic per passare in esercitazione.');
   }
   function renderSelClasse(){
@@ -8500,8 +8500,8 @@
     var cl = CLASSE.classe;
     var on = classeInEsercitazione(cl);
     var msg = on
-      ? ('Riportare la classe ' + cl + ' in VERIFICA?\n\nDa questo momento chi rientra col PIN mentre è già dentro viene bloccato, e lo sblocchi tu. Dopo la consegna gli alunni non vedono più la soluzione.')
-      : ('Mettere la classe ' + cl + ' in ESERCITAZIONE?\n\nNessuno viene più bloccato: gli alunni entrano e rientrano col PIN quando vogliono, anche da un altro dispositivo. Dopo la consegna vedono subito la soluzione a confronto. Chi adesso è bloccato viene sbloccato.');
+      ? ('Riportare la classe ' + cl + ' in VERIFICA?\n\nDa questo momento chi rientra col PIN mentre è già dentro viene bloccato, e lo sblocchi tu.')
+      : ('Mettere la classe ' + cl + ' in ESERCITAZIONE?\n\nNessuno viene più bloccato: gli alunni entrano e rientrano col PIN quando vogliono, anche da un altro dispositivo. Chi adesso è bloccato viene sbloccato.');
     showConfirm(msg, function(){
       var b = byId('btn-eserc'); if(b) b.disabled = true;
       cloudSetEsercitazioneClasse(cl, !on, function(ok, err){
@@ -8512,8 +8512,8 @@
         }
         refreshCloudStud(function(){ refreshConsegne(renderDocente); });
         showAlert(on
-          ? ('La classe ' + cl + ' è di nuovo in verifica: blocco sul PIN attivo, niente soluzione dopo la consegna.')
-          : ('La classe ' + cl + ' è in esercitazione: nessun blocco sul PIN, e dopo la consegna gli alunni vedono subito la soluzione.'));
+          ? ('La classe ' + cl + ' è di nuovo in verifica: blocco sul PIN attivo.')
+          : ('La classe ' + cl + ' è in esercitazione: nessun blocco sul PIN.'));
       });
     });
   });
