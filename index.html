@@ -1193,8 +1193,19 @@
      «fuori» (finestra non ingrandita, schermo diviso, finestra mobile del telefono). Si confronta con lo schermo
      GIA' senza la barra delle applicazioni (availWidth/availHeight), quindi vale per qualunque dispositivo.
      Sui telefoni l'altezza non si guarda mentre si scrive in una casella: la tastiera puo' accorciare la finestra. */
+  /* IPHONE: CONTA SOLO LA PAGINA NASCOSTA (24/09/2026). In 4G, sulla dashboard verifiche, tre alunni con
+     l'iPhone avevano il pallino acceso fisso pur rispondendo alle domande (le risposte arrivavano, il battito ogni
+     5 secondi pure): su certi iPhone, soprattutto con il link aperto da Classroom dentro il suo visore, la pagina
+     risulta senza fuoco o piu' bassa dello schermo anche quando e' davanti. Sull'iPhone pero' due app insieme non
+     si possono tenere (niente schermo diviso, niente finestre mobili): se l'alunno va altrove la pagina diventa
+     NASCOSTA, sempre. Quindi sull'iPhone «fuori» = pagina nascosta, e basta. L'iPad (schermo diviso) e gli
+     Android restano con tutti i controlli. */
+  function iPhoneSoloSchermo(){
+    try{ return /iPhone|iPod/.test(navigator.userAgent || ''); }catch(e){ return false; }
+  }
   function finestraRistretta(){
     try{
+      if(iPhoneSoloSchermo()) return false;
       var sw = screen.availWidth || screen.width, sh = screen.availHeight || screen.height;
       var fw = window.outerWidth || window.innerWidth, fh = window.outerHeight || window.innerHeight;
       if(!sw || !sh || !fw || !fh) return false;
@@ -1221,7 +1232,7 @@
       return !!(a && /^(SELECT|INPUT|TEXTAREA)$/.test(a.tagName));
     }catch(e){ return false; }
   }
-  function fuoriAdesso(){ try{ return document.visibilityState === 'hidden' || (!document.hasFocus() && !campoDelTelefono()) || finestraRistretta(); }catch(e){ return false; } }
+  function fuoriAdesso(){ try{ if(iPhoneSoloSchermo()) return document.visibilityState === 'hidden'; return document.visibilityState === 'hidden' || (!document.hasFocus() && !campoDelTelefono()) || finestraRistretta(); }catch(e){ return false; } }
   function segnalaPagina(fuori){
     if(!STATE.studente || !STATE.proprietario || STATE.salutato || !STATE.presenzaTimer) return;
     rpcSubito('cf_battito', {
@@ -3046,7 +3057,7 @@
   }); }catch(e){}
   /* PALLINO ROSSO: il clic fuori dalla finestra (un'altra finestra, un altro programma) non cambia la
      visibilita' della pagina, quindi lo dicono 'blur' e 'focus'. */
-  try{ window.addEventListener('blur', function(){ if(campoDelTelefono()) return; segnalaPagina(true); }); }catch(e){}
+  try{ window.addEventListener('blur', function(){ if(campoDelTelefono() || (iPhoneSoloSchermo() && document.visibilityState !== 'hidden')) return; segnalaPagina(true); }); }catch(e){}
   try{ window.addEventListener('focus', function(){ segnalaPagina(fuoriAdesso()); }); }catch(e){}
   /* Finestra rimpicciolita o ingrandita, schermo diviso aperto o chiuso: lo dico subito (a trascinamento finito). */
   var RIDIM_TIMER = null, ULTIMO_RISTRETTA = null;
