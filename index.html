@@ -120,8 +120,25 @@
   .link{color:var(--accent); cursor:pointer; text-decoration:underline; font-size:13px;}
   /* Barra in alto dell'alunno: link SENZA sottolineato; "Le mie fatture" come pulsante-pillola ben visibile. */
   #topbar-info .link{ text-decoration:none; }
-  #topbar-info .link-menu{ display:inline-flex; align-items:center; gap:5px; text-decoration:none; background:#dbe7f7; color:#3f6b52; font-weight:700; border:1px solid #b9cdea; border-radius:999px; padding:6px 14px; font-size:13px; transition:background .15s; }
-  #topbar-info .link-menu:hover{ background:#c7dbf2; }
+  /* (26/09/2026) pulsanti sottili come l'«Esci» del docente: icona e scritta su una riga, mai a capo */
+  #topbar-info .tb-nome{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  #topbar-info .tb-azioni{ display:flex; align-items:center; gap:8px; }
+  #topbar-info .tb-azioni:empty{ display:none; }
+  #topbar-info .tb-btn{ display:inline-flex; align-items:center; gap:6px; flex:none; white-space:nowrap; background:#fff; border:1px solid #cfdfd5; color:#3f6b52; border-radius:8px; padding:6px 12px; font-family:inherit; font-size:13.5px; font-weight:500; line-height:1.2; cursor:pointer; transition:background .15s; }
+  #topbar-info .tb-btn:hover{ background:#f1f7f3; }
+  #topbar-info .tb-btn svg{ width:15px; height:15px; flex:none; }
+  @media (max-width: 600px){
+    /* sul telefono: in alto il logo (la calcolatrice sta a destra, nel posto vuoto), sotto nome ed «Esci»,
+       sotto ancora i pulsanti. Niente sfora: la pagina resta larga quanto lo schermo. */
+    .topbar-inner{ flex-wrap:wrap; row-gap:10px; }
+    html.calcx-on body header.topbar{ padding-right:0 !important; }   /* body: vince sulla regola della calcolatrice, messa dopo */
+    .ff-sub{ flex:1 1 100%; margin-left:0; flex-wrap:wrap; gap:8px 10px; min-width:0; }
+    .ff-sub:empty{ display:none; }
+    #topbar-info .tb-nome{ flex:1 1 0; font-size:12.5px; }
+    #topbar-info .tb-esci{ order:1; }
+    #topbar-info .tb-azioni{ order:2; flex:1 1 100%; flex-wrap:wrap; }
+    #topbar-info .tb-btn{ font-size:13px; padding:6px 10px; }
+  }
 
   /* ---- LOGIN ---- */
   #gate{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:30px;}
@@ -306,7 +323,14 @@
        (clone). Il fondo della pagina diventa bianco: se no, con gli sfondi accesi, coprirebbe tutto il foglio. */
     html, body{background:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
     #cortesia-view.printing, #soluzione-view.printing{padding:12mm; -webkit-box-decoration-break:clone; box-decoration-break:clone;}
+    /* un foglio solo: il bianco lo fanno i 12 mm qui sopra, e il cedolino si rimpicciolisce se serve (zoomUnFoglio) */
+    #cortesia-view.printing .wrap, #soluzione-view.printing .wrap{padding:0 !important; max-width:none;}
+    #cortesia-view.printing .cx-page, #soluzione-view.printing .cx-page{zoom:var(--zoom-stampa, 1);}
   }
+  /* la misura di zoomUnFoglio: per un istante la vista sta fuori schermo, larga come il foglio stampato */
+  .misura-vista{display:block !important; position:absolute !important; left:-10000px !important; top:0 !important; width:186mm !important; visibility:hidden !important;}
+  .misura-vista .wrap{padding:0 !important; margin:0 !important; max-width:none !important;}
+  .misura-vista .cx-page{border:none !important; box-shadow:none !important; margin:0 !important;}
 
   /* ---- VISTA IN ATTESA (studente senza esercitazione assegnata) ---- */
   #attesa{min-height:62vh; display:flex; align-items:center; justify-content:center;}
@@ -851,14 +875,15 @@
 .ced-sol-tab td.n{text-align:right; font-variant-numeric:tabular-nums;}
 .ced-sol-tab tr.netto td{background:#efeee8; font-weight:700;}
 @media (max-width:640px){
-  .ced-sheet{padding:12px;}
-  .ced-griglia{grid-template-columns:1fr 1fr !important;}
-  .ced-griglia > div{border-left:none; border-top:1px solid #d9d8cf;}
-  .ced-griglia > div:nth-child(-n+2){border-top:none;}
-  .ced-griglia > div:nth-child(even){border-left:1px solid #2f2f2a;}
-  .ced-fondo{grid-template-columns:1fr !important;}
-  .ced-fondo > div{border-left:none !important; border-top:1px solid #2f2f2a;}
-  .ced-fondo > div:first-child{border-top:none;}
+  /* html:not(.misura-stampa): durante la misura della stampa (zoomUnFoglio) il cedolino si dispone come sulla carta */
+  html:not(.misura-stampa) .ced-sheet{padding:12px;}
+  html:not(.misura-stampa) .ced-griglia{grid-template-columns:1fr 1fr !important;}
+  html:not(.misura-stampa) .ced-griglia > div{border-left:none; border-top:1px solid #d9d8cf;}
+  html:not(.misura-stampa) .ced-griglia > div:nth-child(-n+2){border-top:none;}
+  html:not(.misura-stampa) .ced-griglia > div:nth-child(even){border-left:1px solid #2f2f2a;}
+  html:not(.misura-stampa) .ced-fondo{grid-template-columns:1fr !important;}
+  html:not(.misura-stampa) .ced-fondo > div{border-left:none !important; border-top:1px solid #2f2f2a;}
+  html:not(.misura-stampa) .ced-fondo > div:first-child{border-top:none;}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -2774,6 +2799,20 @@
       return 'Consegnata il <b>' + g + '</b> alle <b>' + o + '</b>';
     }catch(e){ return ''; }
   }
+  /* (26/09/2026, richiesta di Mauro) Ogni consegna su UN foglio: se la pagina (nome, testo dell'esercizio, cedolino)
+     non sta nei 269 mm tra i due bianchi di 14 mm, si rimpicciolisce il solo cedolino quel tanto che basta (3 mm di
+     scorta); mai sotto il 60 %: oltre, meglio due fogli leggibili. Le pagine della valutazione non si toccano. */
+  function zoomConsegne(doc){
+    var mm = 96 / 25.4, disp = 266 * mm;
+    [].forEach.call(doc.querySelectorAll('.pdf-page'), function(p){
+      var ced = p.querySelector('.cx-page'); if(!ced) return;
+      ced.style.zoom = '';
+      var tutto = p.getBoundingClientRect().height - 28 * mm, hc = ced.getBoundingClientRect().height;
+      if(tutto <= disp || !hc) return;
+      var z = Math.floor((disp - (tutto - hc)) / hc * 1000) / 1000;
+      ced.style.zoom = String(Math.max(0.6, z));
+    });
+  }
   function stampaPdfConsegne(data, classe){
     var css=''; document.querySelectorAll('style').forEach(function(st){ css += st.textContent + '\n'; });
     // Una PAGINA: intestazione (nome + data/ora oppure voto + sottotitolo) e sotto il contenuto.
@@ -2858,10 +2897,11 @@
     var doc = '<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>Valutazioni ' + esc(classe) + '</title><style>' + css + pcss + '</style></head><body>' + body + '</body></html>';
     var ifr = document.createElement('iframe');
     ifr.setAttribute('aria-hidden', 'true');
-    ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    // (26/09/2026) larga come un A4 (794 px) e fuori schermo: cosi' zoomConsegne misura le pagine come sulla carta
+    ifr.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;visibility:hidden;';
     document.body.appendChild(ifr);
     var stampato = false;
-    function vai(){ if(stampato) return; stampato = true; try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ showAlert('Stampa non riuscita: ' + e.message); } }
+    function vai(){ if(stampato) return; stampato = true; try{ zoomConsegne(ifr.contentDocument); }catch(e){} try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ showAlert('Stampa non riuscita: ' + e.message); } }
     ifr.onload = function(){ setTimeout(vai, 250); };   // do' tempo ai font/immagini di sistemarsi
     try{ ifr.contentWindow.onafterprint = function(){ setTimeout(function(){ if(ifr.parentNode) ifr.parentNode.removeChild(ifr); }, 300); }; }catch(e){}
     ifr.srcdoc = doc;
@@ -5256,27 +5296,35 @@
     } else {
       setTimeout(function(){ STATE.caricamentoFoglio = false; }, 0);   // allenamento: niente cloud da aspettare
     }
+    /* (26/09/2026, richiesta di Mauro) Barra in alto dell'alunno: pulsanti sottili come l'«Esci» del docente, con
+       l'icona e la scritta su una riga sola (prima erano pillole che sul telefono andavano a capo parola per parola
+       e allargavano la pagina: la calcolatrice finiva fuori a destra). Sul telefono: nome ed «Esci» su una riga,
+       i pulsanti sotto (vedi .tb-azioni nel @media). */
     var top = byId('topbar-info'); top.innerHTML = '';
-    var span = document.createElement('span'); span.textContent = STATE.studente.cognome + ' ' + STATE.studente.nome + ' · classe ' + CLASSE.classe;
-    var out = document.createElement('span'); out.className = 'link'; out.textContent = 'Esci'; out.addEventListener('click', goGate);
+    function pulsanteBarra(icona, testo, fn){
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'tb-btn';
+      b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icona + '</svg>';
+      var t = document.createElement('span'); t.textContent = testo; b.appendChild(t);
+      b.addEventListener('click', fn);
+      return b;
+    }
+    var ICO_INDIETRO = '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>';
+    var span = document.createElement('span'); span.className = 'tb-nome'; span.textContent = STATE.studente.cognome + ' ' + STATE.studente.nome + ' · classe ' + CLASSE.classe;
+    var azioni = document.createElement('div'); azioni.className = 'tb-azioni';
+    var out = pulsanteBarra('<path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2"/><path d="M9 12h12l-3-3m0 6 3-3"/>', 'Esci', goGate);
+    out.classList.add('tb-esci');
     top.appendChild(span);
     // Alunno con più fatture: link per tornare al menù SENZA consegnare, per provare/finire le altre.
     // Il lavoro di questa fattura resta salvato (chiave cf_lavoro per fattura) e si ritrova riaprendola.
     if(STATE.modalitaCompiti && STATE.studente){
       if(STATE.esercitazione){
-        var rc = document.createElement('span'); rc.className = 'link link-menu'; rc.textContent = '↻ Ricomincia da capo'; rc.style.marginRight = '14px';
-        rc.addEventListener('click', function(){ ricominciaEsercitazione(); });
-        top.appendChild(rc);
+        azioni.appendChild(pulsanteBarra('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>', 'Ricomincia da capo', function(){ ricominciaEsercitazione(); }));
       }
-      var toC = document.createElement('span'); toC.className = 'link link-menu'; toC.textContent = '← Torna ai compiti'; toC.style.marginRight = '14px';
-      if(STATE.ritornoFn) toC.textContent = '← Indietro';
-      toC.addEventListener('click', function(){ salvaLavoro(); if(STATE.ritornoFn){ var rit = STATE.ritornoFn; STATE.ritornoFn = null; rit(); return; } mostraCompiti(); });
-      top.appendChild(toC);
+      azioni.appendChild(pulsanteBarra(ICO_INDIETRO, STATE.ritornoFn ? 'Indietro' : 'Torna ai compiti', function(){ salvaLavoro(); if(STATE.ritornoFn){ var rit = STATE.ritornoFn; STATE.ritornoFn = null; rit(); return; } mostraCompiti(); }));
     } else if(STATE.multiMode && STATE.studente){
-      var toMenu = document.createElement('span'); toMenu.className = 'link link-menu'; toMenu.textContent = '← I miei cedolini'; toMenu.style.marginRight = '14px';
-      toMenu.addEventListener('click', function(){ salvaLavoro(); mostraMenuFatture(); });
-      top.appendChild(toMenu);
+      azioni.appendChild(pulsanteBarra(ICO_INDIETRO, 'I miei cedolini', function(){ salvaLavoro(); mostraMenuFatture(); }));
     }
+    top.appendChild(azioni);
     top.appendChild(out);
     var svgDoc = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#3f6b52" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:7px;"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></svg>';
     byId('cortesia-banner').innerHTML = svgDoc + (STATE.esercitazione
@@ -5431,7 +5479,22 @@
   }
 
   /* ---------- Stampa (solo la vista attiva) ---------- */
-  function stampa(viewId){ var el = byId(viewId); el.classList.add('printing'); window.print(); setTimeout(function(){ el.classList.remove('printing'); }, 600); }
+  /* (26/09/2026, richiesta di Mauro) Il cedolino stampato sta su UN foglio. Prima di stampare lo si misura come
+     verra' sulla carta (largo 186 mm: A4 meno 12 mm per lato; le regole del telefono spente per quell'istante,
+     perche' in stampa la pagina e' larga come un A4) e, se non ci sta nei 273 mm di altezza, lo si rimpicciolisce
+     quel tanto che basta (zoom, 3 mm di scorta). Se ci sta, resta com'e'. */
+  var FOGLIO_ALTO_PX = 270 * 96 / 25.4;
+  function zoomUnFoglio(view){
+    var pag = view && view.querySelector('.cx-page'); if(!pag) return;
+    view.style.removeProperty('--zoom-stampa');
+    document.documentElement.classList.add('misura-stampa');
+    view.classList.add('misura-vista');
+    var h = pag.getBoundingClientRect().height;
+    view.classList.remove('misura-vista');
+    document.documentElement.classList.remove('misura-stampa');
+    if(h > FOGLIO_ALTO_PX) view.style.setProperty('--zoom-stampa', String(Math.floor(FOGLIO_ALTO_PX / h * 1000) / 1000));
+  }
+  function stampa(viewId){ var el = byId(viewId); try{ zoomUnFoglio(el); }catch(e){} el.classList.add('printing'); window.print(); setTimeout(function(){ el.classList.remove('printing'); }, 600); }
 
   /* =========================================================
      FIX C — Confronto rapido "la mia" ⇄ "corretta"
@@ -9403,7 +9466,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260926-02';
+  var VERSIONE_APP = '20260926-03';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
@@ -9454,6 +9517,7 @@
 /* colore, barra in alto e vista del docente per la calcolatrice di questa app */
 window.CALCX_ACCENT = '#3f6b52';
 window.CALCX_TESTATA = 'header.topbar';
+window.CALCX_ALLINEA = '.ff-badge';
 window.CALCX_NASCONDI = function(){ var d = document.getElementById('docente'); return !!(d && d.style.display !== 'none' && d.offsetParent !== null); };
 /* CALCOLATRICE DELL'APP (23/09/2026, chiesta da Mauro). Gli alunni non hanno la calcolatrice e quella di Windows o
    del telefono fa uscire dalla pagina, e il pallino rosso si accende. Questa sta DENTRO la pagina: l'icona sta
@@ -9681,7 +9745,10 @@ window.CALCX_NASCONDI = function(){ var d = document.getElementById('docente'); 
     var top = 10;
     try{
       var H = window.CALCX_TESTATA ? document.querySelector(window.CALCX_TESTATA) : null;
-      if(H && H.offsetParent !== null){ var r = H.getBoundingClientRect(); if(r.height >= 40) top = Math.max(8, r.top + (r.height - 44) / 2); }
+      /* (26/09/2026) CALCX_ALLINEA: se c'e', l'icona si allinea a quell'elemento (il logo) e non a tutta la barra,
+         che sul telefono e' su piu' righe */
+      var A = (H && window.CALCX_ALLINEA) ? H.querySelector(window.CALCX_ALLINEA) : null;
+      if(H && H.offsetParent !== null){ var r = (A || H).getBoundingClientRect(); if(r.height >= 40) top = Math.max(8, r.top + (r.height - 44) / 2); }
     }catch(e){}
     btn.style.top = Math.round(top) + 'px';
     if(!pan.style.left) pan.style.top = Math.round(top + 54) + 'px';
