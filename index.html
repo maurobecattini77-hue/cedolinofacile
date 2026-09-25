@@ -7818,9 +7818,14 @@
     else t = el.textContent;
     return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   }
+  /* (25/09/2026, trovato da Mauro sul telefono) Anche lo spostamento DI LATO: le tabelle larghe (scaglioni IRPEF nella
+     dashboard, prospetto nel cedolino) sul telefono si scorrono col dito; cambiando scheda ripartivano da sinistra.
+     Ora si segna quanto erano spostate e si rimettono uguali, nello stesso ordine. */
+  function vcRadice(){ return (VC.ct === 2 || VC.ct === 3) ? byId('editor') : byId('soluzione-page'); }
+  function vcLaterali(){ var r = vcRadice(); return r ? Array.prototype.slice.call(r.querySelectorAll('.scrollx, .ced-scroll')) : []; }
   function vcPunti(){
     var inDash = (VC.ct === 2 || VC.ct === 3);
-    var root = inDash ? byId('editor') : byId('soluzione-page');
+    var root = vcRadice();
     if(!root) return [];
     var sel = inDash
       ? '.blocco-h .t, .sotto-h .t, .riga, .riga-contributi, .riga-detrazione, .scaglioni tbody tr, .risultato, .detr-conto .cr, .presunto, .calcolo-netta'
@@ -7844,9 +7849,12 @@
     var punti = vcPunti(), linea = vcLineaBarra(), ancora = -1;
     for(var i = 0; i < punti.length; i++){ if(punti[i].bottom > linea + 1){ ancora = i; break; } }
     if(ancora === -1) ancora = punti.length - 1;
-    return { y: window.scrollY, punti: punti.map(function(p){ return { key:p.key, top:p.top }; }), ancora: ancora };
+    return { y: window.scrollY, punti: punti.map(function(p){ return { key:p.key, top:p.top }; }), ancora: ancora,
+             lati: vcLaterali().map(function(el){ return el.scrollLeft; }) };
   }
   function vcRimettiPunto(segno){
+    var lat = vcLaterali();
+    (segno.lati || []).forEach(function(x, i){ if(lat[i]) lat[i].scrollLeft = x; });   // di lato: come prima
     window.scrollTo(0, segno.y);                      // prima: stessa altezza di prima
     if(segno.ancora < 0) return;
     var mappa = {}; vcPunti().forEach(function(p){ mappa[p.key] = p; });
@@ -9374,7 +9382,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-06';
+  var VERSIONE_APP = '20260925-07';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
