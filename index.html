@@ -663,6 +663,22 @@
 .cedolino .campo-fascia{flex:1 1 100%; min-width:0;}
 .cedolino .campo-fascia .voce .cur{min-height:38px;}
 .cedolino .campo-reddito .imp input{width:180px;}
+/* (25/09/2026) caselle che riempie l'app: si leggono ma non si scrivono */
+.cedolino .imp input.calcolato{background:var(--ro); font-weight:600; cursor:default;}
+.cedolino .imp input.calcolato:focus{outline:none; box-shadow:none; border-color:var(--line2);}
+.cedolino .imp input.calcolato::placeholder{color:var(--muted); font-weight:400; font-size:13px;}
+.cedolino .scaglioni td.mens .ampiezza{display:block; margin-top:2px; font-size:11.5px; font-style:italic; color:var(--muted); opacity:.85; white-space:nowrap;}
+/* il reddito annuo presunto: reddito fiscale × mensilita' = risultato dell'app */
+.cedolino .presunto{display:flex; flex-direction:column; gap:10px; margin-bottom:12px;}
+.cedolino .presunto .detr-spiega{flex:0 0 auto;}
+.cedolino .presunto-conto{display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px;}
+.cedolino .presunto .campo-fisc .imp input{width:170px;}
+.cedolino .presunto .campo-mens .imp input{width:96px; text-align:center;}
+.cedolino .presunto-ris{display:flex; align-items:flex-end; gap:10px; flex:1 1 220px;}
+.cedolino .presunto .campo-ris{flex:1 1 auto;}
+.cedolino .presunto-val{height:38px; display:flex; align-items:center; justify-content:flex-end; padding:0 14px;
+  border:1px solid var(--fascia-line); background:var(--fascia-bg); border-radius:9px;
+  font-family:var(--serif); font-size:19px; font-weight:600; color:var(--fascia); font-variant-numeric:tabular-nums;}
 
 .cedolino .detr-conto{border:1px solid var(--fascia-line); background:var(--surface); border-radius:9px; overflow:hidden;}
 .cedolino .detr-conto .cr{display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; padding:9px 13px; border-bottom:1px solid var(--line); font-size:14px;}
@@ -734,6 +750,10 @@
   .cedolino .riga-contributi .operatore{display:none;}
   .cedolino .riga-contributi .ic{grid-column:2/3; justify-self:end;}
   .cedolino .campo-reddito, .cedolino .campo-reddito .imp input{width:100%;}
+  .cedolino .presunto .campo-fisc{flex:1 1 130px; min-width:0;}
+  .cedolino .presunto .campo-mens{flex:0 0 88px;}
+  .cedolino .presunto .campo-fisc .imp input, .cedolino .presunto .campo-mens .imp input{width:100%;}
+  .cedolino .presunto-ris{flex:1 1 100%;}
   .cedolino .calcolo-netta{flex-direction:column; align-items:stretch;}
   .cedolino .imp-larga input{width:100%;}
   .cedolino .calcolo-netta .operatore{display:none;}
@@ -5593,10 +5613,12 @@
       ]}
     ];
 
+    /* perc: l'aliquota con cui l'app calcola l'imposta della riga (25/09/2026). ampiezza: quanto vale lo
+       scaglione nel mese (4.166,67 − 2.333,33), scritta sotto in piccolo: chi lo supera sa che va messo tutto. */
     var SCAGLIONI = [
-      {annuo:'da 0 a 28.000',        mensile:'da 0 a 2.333,33',        ali:'23 %'},
-      {annuo:'da 28.001 a 50.000',   mensile:'da 2.333,34 a 4.166,67', ali:'33 %'},
-      {annuo:'oltre 50.000',         mensile:'oltre 4.166,67',         ali:'43 %'}
+      {annuo:'da 0 a 28.000',        mensile:'da 0 a 2.333,33',        ali:'23 %', perc:'23'},
+      {annuo:'da 28.001 a 50.000',   mensile:'da 2.333,34 a 4.166,67', ali:'33 %', perc:'33', ampiezza:'1.833,34'},
+      {annuo:'oltre 50.000',         mensile:'oltre 4.166,67',         ali:'43 %', perc:'43'}
     ];
 
     var VOCI_DETRAZIONI = [
@@ -5722,19 +5744,59 @@
     var aperto = null;
     var SCORCIATOIE = [];
     var MUTO = false;   /* ricostruzione in sola lettura (Valuta, soluzione): niente avviso al salvataggio */
-    var REDDITO = '';   /* reddito annuo presunto: si scrive una volta, vale per Detrazioni e Voci integrative */
+    var REDDITO = '';   /* reddito annuo presunto: vale per Detrazioni e Voci integrative */
+    /* (25/09/2026, richiesta di Mauro) Il reddito presunto non si scrive piu': l'alunno mette il reddito fiscale
+       del mese e il numero delle mensilita', il × c'e' gia', il risultato lo calcola l'app (REDDITO). Si scrive
+       in uno dei due blocchi a fasce e compare uguale nell'altro. */
+    var RED_FISC = '', RED_MENS = '';
     var pulsantiVoce = {};
 
     function byIdC(id){ return document.getElementById(id); }
     function redditoPresunto(){ var n = leggiNumero(REDDITO); return n === null ? 0 : n; }
-    /* L'alunno scrive il reddito in un blocco a fasce: l'altro lo mostra uguale e tutte le fasce
-       si rifanno. Cambiato il reddito, cambiano gli importi: le conferme vanno ridate. */
-    function cambiaReddito(v, da){
-      REDDITO = v;
+    function presuntoDaParti(){ var v = prodottoAlCentesimo(RED_FISC, RED_MENS, 1); return v === null ? '' : euro(v); }
+    /* I due numeri presi dal blocco dove l'alunno li scrive: gli altri blocchi li mostrano uguali e tutte le fasce
+       si rifanno. Cambiato il reddito, cambiano gli importi: le conferme vanno ridate (solo se il reddito cambia
+       davvero: la virgola rimessa a posto uscendo dalla casella non conta). */
+    function cambiaPresunto(da){
+      var prima = REDDITO;
+      REDDITO = presuntoDaParti();
       var bh = blocchiEl(); if(!bh) return;
-      bh.querySelectorAll('input[data-reddito-presunto]').forEach(function(i){ if(i !== da) i.value = v; });
+      bh.querySelectorAll('input[data-red-fisc]').forEach(function(i){ if(i !== da) i.value = RED_FISC; });
+      bh.querySelectorAll('input[data-red-mens]').forEach(function(i){ if(i !== da) i.value = RED_MENS; });
+      bh.querySelectorAll('[data-red-ris]').forEach(function(s){ s.textContent = REDDITO || '0,00'; });
       bh.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._ricalcola) x._ricalcola(); });
-      bh.querySelectorAll('.blocco').forEach(function(b){ if(b._scuoti) b._scuoti(); });
+      if(REDDITO !== prima) bh.querySelectorAll('.blocco').forEach(function(b){ if(b._scuoti) b._scuoti(); });
+    }
+    /* Legge dai dati salvati di un blocco a fasce i due numeri e il reddito. Fogli di prima del 25/09: c'e' solo
+       il reddito scritto a mano, e resta quello finche' l'alunno non scrive i due numeri. */
+    function prendiPresunto(init){
+      if(init && (init.redFisc != null || init.mens != null)){ RED_FISC = init.redFisc || ''; RED_MENS = init.mens || ''; }
+      if(init && init.reddito) REDDITO = init.reddito;
+      if(!MUTO && presuntoDaParti()) REDDITO = presuntoDaParti();
+    }
+    function creaPresunto(){
+      var w = document.createElement('div');
+      w.className = 'presunto';
+      w.innerHTML =
+        '<p class="detr-spiega">Detrazioni e somma integrativa si calcolano sul reddito di un <b>anno intero</b>, che si stima così: ' +
+          'il <b>reddito fiscale del mese</b> (l’imponibile fiscale che hai calcolato sopra) per il <b>numero delle mensilità</b> ' +
+          'previste dal contratto. Il risultato è il <b>reddito annuo presunto</b>: lo calcola l’app.</p>' +
+        '<div class="presunto-conto">' +
+          '<div class="campo campo-fisc"><label>Reddito fiscale del mese</label>' +
+            '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Reddito fiscale del mese" data-red-fisc /></div></div>' +
+          '<div class="operatore">×</div>' +
+          '<div class="campo campo-mens"><label>Numero di mensilità</label>' +
+            '<div class="imp"><input type="text" inputmode="numeric" placeholder="0" aria-label="Numero di mensilità" data-red-mens /></div></div>' +
+          '<div class="presunto-ris"><div class="operatore">=</div>' +
+            '<div class="campo campo-ris"><label>Reddito annuo presunto</label>' +
+            '<div class="presunto-val" data-red-ris>0,00</div></div></div>' +
+        '</div>';
+      var inF = w.querySelector('[data-red-fisc]'), inM = w.querySelector('[data-red-mens]');
+      inF.value = RED_FISC; inM.value = RED_MENS;
+      w.querySelector('[data-red-ris]').textContent = REDDITO || '0,00';
+      inF.addEventListener('input', function(){ RED_FISC = inF.value; cambiaPresunto(inF); aggiorna(); });
+      inM.addEventListener('input', function(){ RED_MENS = inM.value; cambiaPresunto(inM); aggiorna(); });
+      return w;
     }
     function blocchiEl(){ return byIdC('blocchi'); }
     function euro(n){ return n.toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2, useGrouping:true}); }
@@ -5747,6 +5809,29 @@
       if(s.indexOf(',') === -1 && /^-?\d+\.\d{1,2}$/.test(s)) s = s.replace('.', ',');
       var n = parseFloat(s.replace(/\./g,'').replace(',','.'));
       return isNaN(n) ? null : n;
+    }
+    /* (25/09/2026) I CONTI CHE FA L'APP (contributi, imposta degli scaglioni, reddito presunto) si fanno sulle
+       cifre scritte, senza la virgola mobile del computer, e si arrotondano al centesimo come a mano: da 5 in
+       su per eccesso (212,3542 -> 212,35; 536,6659 -> 536,67; 0,525 -> 0,53). Il numero si legge come fa
+       leggiNumero (anche il punto del tastierino). null se una delle due caselle non e' un numero. */
+    function decimaleEsatto(v){
+      var s = String(v == null ? '' : v).trim();
+      if(s.indexOf(',') === -1 && /^-?\d+\.\d{1,2}$/.test(s)) s = s.replace('.', ',');
+      s = s.replace(/\./g, '').replace(',', '.');
+      if(!/^-?\d+(\.\d+)?$/.test(s)) return null;
+      var neg = s.charAt(0) === '-'; if(neg) s = s.slice(1);
+      var p = s.split('.'), dec = p[1] || '';
+      return { n: BigInt((neg ? '-' : '') + p[0] + dec), scala: dec.length };
+    }
+    function prodottoAlCentesimo(a, b, diviso){   /* a × b ÷ diviso, arrotondato al centesimo */
+      var x = decimaleEsatto(a), y = decimaleEsatto(b);
+      if(!x || !y) return null;
+      var num = x.n * y.n * BigInt(100);
+      var den = BigInt(diviso) * BigInt('1' + '0'.repeat(x.scala + y.scala));
+      var q = num / den, r = num % den;
+      if(r < BigInt(0)) r = -r;
+      if(r * BigInt(2) >= den) q += (num < BigInt(0)) ? BigInt(-1) : BigInt(1);
+      return Number(q) / 100;
     }
     function escC(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -6202,8 +6287,16 @@
       r._tendine = [sg.tendina];
 
       var inImp = cImp.querySelector('input'), inAli = cAli.querySelector('input'), inTot = cTot.querySelector('input');
-      [cImp, cAli, cTot].forEach(function(c){ c.querySelector('input').addEventListener('input', aggiorna); });
-      primaIlSegno(r, sg, [inImp, inAli, inTot]);
+      /* (25/09/2026, richiesta di Mauro) I contributi da trattenere li calcola l'app: imponibile × aliquota,
+         arrotondato al centesimo. L'alunno scrive l'imponibile e l'aliquota. */
+      inTot.readOnly = true; inTot.tabIndex = -1; inTot.classList.add('calcolato');
+      inTot.placeholder = 'lo calcola l’app';
+      function calcolaTot(){
+        var v = prodottoAlCentesimo(inImp.value, inAli.value, 100);
+        inTot.value = (v === null) ? '' : euro(v);
+      }
+      [inImp, inAli].forEach(function(i){ i.addEventListener('input', function(){ calcolaTot(); aggiorna(); }); });
+      primaIlSegno(r, sg, [inImp, inAli]);
 
       r._valore = function(){
         if(!r._segno) return 0;
@@ -6226,6 +6319,9 @@
         if(init.imp) inImp.value = init.imp;
         if(init.ali) inAli.value = init.ali;
         if(init.tot) inTot.value = init.tot;
+        /* foglio in lavorazione: il totale si rifà dai due numeri (anche nei fogli di prima, dove era scritto a
+           mano). In sola lettura (Valuta, soluzione) resta quello salvato, cioè quello che l'alunno ha visto. */
+        if(!MUTO && prodottoAlCentesimo(inImp.value, inAli.value, 100) !== null) calcolaTot();
       }
 
       bl._id = 'contr';
@@ -6251,7 +6347,6 @@
       r.setAttribute('data-riga','');
       r.style.display = 'none';
       r._segno = null;
-      r._confermato = false;
       r._tendine = [];
       r._nelFoglio = false;   /* passaggio intermedio: il segno arrivera' sull'IRPEF netta */
 
@@ -6274,15 +6369,24 @@
         '<th class="n">Imponibile del mese</th><th class="n">Aliquota</th><th class="n">Imposta</th></tr></thead>' +
         '<tbody></tbody>';
       var tbody = tb.querySelector('tbody');
+      /* (25/09/2026, richiesta di Mauro) L'alunno scrive l'imponibile del mese che cade in ogni scaglione; l'imposta
+         della riga la calcola l'app (imponibile × aliquota, arrotondata al centesimo). */
       SCAGLIONI.forEach(function(s, i){
         var tr = document.createElement('tr');
         tr.innerHTML =
-          '<td>' + s.annuo + '</td><td class="mens">' + s.mensile + '</td>' +
+          '<td>' + s.annuo + '</td><td class="mens">' + s.mensile +
+            (s.ampiezza ? '<span class="ampiezza">ampiezza dello scaglione: ' + s.ampiezza + '</span>' : '') + '</td>' +
           '<td class="n"><div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Imponibile nello scaglione ' + (i+1) + '" /></div></td>' +
           '<td class="n ali">' + s.ali + '</td>' +
-          '<td class="n"><div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Imposta dello scaglione ' + (i+1) + '" /></div></td>';
+          '<td class="n"><div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Imposta dello scaglione ' + (i+1) + '" readonly tabindex="-1" class="calcolato" /></div></td>';
+        tr._perc = s.perc;
         tbody.appendChild(tr);
       });
+      function calcolaImposta(tr){
+        var ins = tr.querySelectorAll('input');
+        var v = prodottoAlCentesimo(ins[0].value, tr._perc, 100);
+        ins[1].value = (v === null) ? '' : euro(v);
+      }
       /* Il totale non lo digita nessuno: e' la somma delle imposte scritte dall'alunno. */
       var trTot = document.createElement('tr');
       trTot.className = 'tot-riga';
@@ -6303,37 +6407,17 @@
       box.appendChild(tb);
       corpo.appendChild(box);
 
-      var barra = document.createElement('div');
-      barra.className = 'barra-conferma';
-      var bconf = document.createElement('button');
-      bconf.type='button'; bconf.className='btn p'; bconf.textContent='Conferma l’IRPEF lorda';
-      var esito = document.createElement('span');
-      esito.className='esito-conferma';
-      esito.textContent='Non serve compilare tutti gli scaglioni: conferma quando hai finito.';
-      function conferma(){
-        r._confermato = true;
-        esito.className = 'esito-conferma fatto';
-        esito.textContent = '✓ Confermata. Se cambi un numero, dovrai confermare di nuovo.';
-      }
-      bconf.addEventListener('click', function(){ conferma(); aggiorna(); });
-      barra.appendChild(bconf); barra.appendChild(esito);
-      corpo.appendChild(barra);
-
-      /* toccare un numero annulla la conferma: non deve restare buona una cifra vecchia */
-      tb.querySelectorAll('input').forEach(function(i){
-        i.addEventListener('input', function(){
-          if(r._confermato){
-            r._confermato = false;
-            esito.className = 'esito-conferma';
-            esito.textContent = 'Hai cambiato un numero: conferma di nuovo.';
-          }
-          aggiorna();
-        });
+      /* (25/09/2026, richiesta di Mauro) Via il pulsante «Conferma l'IRPEF lorda»: i ragazzi si dimenticavano di
+         premerlo. Il totale segue gli scaglioni mano a mano che si compilano; se un imponibile e' sbagliato, lo
+         correggono o lo cancellano e l'imposta e il totale si rifanno da soli. */
+      tbody.querySelectorAll('tr:not(.tot-riga)').forEach(function(tr){
+        tr.querySelectorAll('input')[0].addEventListener('input', function(){ calcolaImposta(tr); aggiorna(); });
       });
 
       r._valore = function(){
-        celTot.textContent = euro(sommaImposte());
-        return r._confermato ? sommaImposte() : 0;
+        var t = sommaImposte();
+        celTot.textContent = euro(t);
+        return t;
       };
       r._senzaSegno = function(){ return false; };
       corpo.appendChild(r);
@@ -6345,8 +6429,10 @@
           var ins = trs[i].querySelectorAll('input');
           ins[0].value = coppia[0] || '';
           ins[1].value = coppia[1] || '';
+          /* foglio in lavorazione: l'imposta si rifà dall'imponibile (anche nei fogli di prima, dove era scritta a
+             mano); in sola lettura resta quella salvata */
+          if(!MUTO && decimaleEsatto(ins[0].value) !== null) calcolaImposta(trs[i]);
         });
-        if(init.conf) conferma();
       }
 
       bl._id = 'irpef-l';
@@ -6356,7 +6442,7 @@
           var ins = tr.querySelectorAll('input');
           sc.push([ins[0].value, ins[1].value]);
         });
-        return { sc:sc, conf:!!r._confermato };
+        return { sc:sc };
       };
       blocchiEl().appendChild(bl);
     }
@@ -6543,21 +6629,13 @@
       bdel.addEventListener('click', function(){ eliminaBlocco(bl, id, (bl.querySelector('.blocco-h .t') || {}).textContent); });
       bl.querySelector('.blocco-h').appendChild(bdel);
 
-      /* il reddito annuo presunto si scrive UNA volta, qui in cima (15/09/2026):
-         vale per tutte le voci del blocco e compare uguale nell'altro blocco a fasce */
-      var cRed = document.createElement('div');
-      cRed.className = 'campo campo-reddito';
-      cRed.style.marginBottom = '12px';
-      cRed.innerHTML = '<label>Reddito annuo presunto</label>' +
-                       '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Reddito annuo presunto" data-reddito-presunto /></div>';
-      corpo.appendChild(cRed);
-      var inRed = cRed.querySelector('input');
+      /* il reddito annuo presunto sta UNA volta, qui in cima (15/09/2026): vale per tutte le voci del blocco e
+         compare uguale nell'altro blocco a fasce. Dal 25/09 lo calcola l'app (creaPresunto). */
       var redInit = (init && init.reddito) ? init.reddito : '';
       /* fogli di prima del 15/09: il reddito stava in ogni voce, si prende il primo scritto */
       if(!redInit && init && init.righe){ init.righe.forEach(function(ir){ if(!redInit && ir && ir.reddito) redInit = ir.reddito; }); }
-      if(redInit) REDDITO = redInit;
-      inRed.value = REDDITO;
-      inRed.addEventListener('input', function(){ cambiaReddito(inRed.value, inRed); aggiorna(); });
+      prendiPresunto(init ? { redFisc:init.redFisc, mens:init.mens, reddito:redInit } : null);
+      corpo.appendChild(creaPresunto());
 
       var elenco = document.createElement('div');
       elenco.className = 'elenco-detrazioni';
@@ -6627,7 +6705,7 @@
       bl._leggi = function(){
         var righe = [];
         elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._leggi) righe.push(x._leggi()); });
-        return { reddito:inRed.value, righe:righe, conf:!!r._confermato };
+        return { reddito:REDDITO, redFisc:RED_FISC, mens:RED_MENS, righe:righe, conf:!!r._confermato };
       };
       blocchiEl().appendChild(bl);
     }
@@ -6656,15 +6734,8 @@
       bdel.addEventListener('click', function(){ eliminaBlocco(bl, 'somma', 'Somma integrativa'); });
       bl.querySelector('.blocco-h').appendChild(bdel);
 
-      var cRed = document.createElement('div');
-      cRed.className = 'campo campo-reddito';
-      cRed.innerHTML = '<label>Reddito annuo presunto</label>' +
-                       '<div class="imp"><input type="text" inputmode="decimal" placeholder="0,00" aria-label="Reddito annuo presunto" data-reddito-presunto /></div>';
-      corpo.appendChild(cRed);
-      var inRed = cRed.querySelector('input');
-      if(init && init.reddito) REDDITO = init.reddito;
-      inRed.value = REDDITO;
-      inRed.addEventListener('input', function(){ cambiaReddito(inRed.value, inRed); aggiorna(); });
+      prendiPresunto(init);
+      corpo.appendChild(creaPresunto());
 
       var d = document.createElement('div');
       d.className = 'riga-detrazione';
@@ -6685,7 +6756,7 @@
       corpo.appendChild(r);
 
       bl._id = 'somma';
-      bl._leggi = function(){ return { reddito:inRed.value, fascia:d._leggiPannello().fascia }; };
+      bl._leggi = function(){ return { reddito:REDDITO, redFisc:RED_FISC, mens:RED_MENS, fascia:d._leggiPannello().fascia }; };
       blocchiEl().appendChild(bl);
     }
 
@@ -7121,7 +7192,7 @@
       tendineHost().innerHTML = '';
       creati = {};
       SCORCIATOIE = [];
-      REDDITO = '';
+      REDDITO = ''; RED_FISC = ''; RED_MENS = '';
       pulsantiVoce = {};
       var bh = blocchiEl(); if(bh) bh.innerHTML = '';
     }
@@ -9200,7 +9271,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-02';
+  var VERSIONE_APP = '20260925-03';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
