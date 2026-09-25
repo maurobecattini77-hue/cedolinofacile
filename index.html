@@ -701,7 +701,11 @@
 .cedolino .detr-conto .ultima .l, .cedolino .detr-conto .ultima .v{color:var(--fascia);}
 .cedolino .detr-conto .ultima .v{font-family:var(--serif); font-size:19px;}
 
-.cedolino .calcolo-netta{display:flex; flex-wrap:wrap; align-items:center; gap:12px;}
+.cedolino .calcolo-netta{display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px;}
+/* (25/09/2026) sopra le due caselle, «IRPEF lorda» e «Detrazioni» a conto giusto: il posto c'e' sempre,
+   cosi' quando la scritta compare non si sposta niente */
+.cedolino .netta-campo{display:flex; flex-direction:column; gap:4px;}
+.cedolino .netta-campo .etich{height:14px; line-height:14px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700;}
 .cedolino .imp-larga input{width:210px;}
 .cedolino .imp-larga input::placeholder{font-size:13.5px; letter-spacing:0;}
 .cedolino .risultato-netta{flex:1 1 180px; min-width:150px; display:flex; justify-content:flex-end; align-items:center;
@@ -763,6 +767,8 @@
   .cedolino .presunto .campo-fisc .imp input, .cedolino .presunto .campo-mens .imp input{width:100%;}
   .cedolino .presunto-ris{flex:1 1 100%;}
   .cedolino .calcolo-netta{flex-direction:column; align-items:stretch;}
+  /* in colonna i 180px di base diventavano ALTEZZA: il risultato era un quadrato enorme (25/09/2026) */
+  .cedolino .risultato-netta{flex:0 0 auto;}
   .cedolino .imp-larga input{width:100%;}
   .cedolino .calcolo-netta .operatore{display:none;}
   .cedolino .detr-alto{gap:12px;}
@@ -6462,6 +6468,7 @@
       }
 
       bl._id = 'irpef-l';
+      bl._totale = sommaImposte;   /* per le scritte dell'IRPEF netta */
       bl._leggi = function(){
         var sc = [];
         tbody.querySelectorAll('tr:not(.tot-riga)').forEach(function(tr){
@@ -6728,6 +6735,11 @@
 
       bl._id = id;
       bl._scuoti = scuoti;
+      bl._sommaVoci = function(){   /* per le scritte dell'IRPEF netta: le voci scritte, confermate o no */
+        var t = 0;
+        elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ t += x._mese(); });
+        return t;
+      };
       bl._leggi = function(){
         var righe = [];
         elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._leggi) righe.push(x._leggi()); });
@@ -6787,8 +6799,9 @@
     }
 
     /* ---------- blocco IRPEF NETTA ----------
-       Nessuna etichetta dice quale importo va dove: e' proprio quello che
-       deve sapere l'alunno. Due caselle, il segno in mezzo, risultato dell'app. */
+       Nessuna etichetta dice PRIMA quale importo va dove: e' proprio quello che
+       deve sapere l'alunno. Due caselle, il segno in mezzo, risultato dell'app.
+       Le etichette compaiono DOPO, a conto giusto (25/09/2026, vedi _etichette). */
     function creaIrpefNetta(init){
       var bl = document.createElement('div');
       bl.className = 'blocco';
@@ -6821,10 +6834,14 @@
       var calc = document.createElement('div');
       calc.className = 'calcolo-netta';
       function casella(){
+        var w = document.createElement('div');
+        w.className = 'netta-campo';
         var c = document.createElement('div');
         c.className = 'imp imp-larga';
         c.innerHTML = '<input type="text" inputmode="decimal" placeholder="inserisci l’importo" aria-label="Importo" />';
-        return c;
+        w.innerHTML = '<span class="etich"></span>';
+        w.appendChild(c);
+        return w;
       }
       var c1 = casella(), c2 = casella();
       var sg = creaSegno(r);
@@ -6851,6 +6868,21 @@
       };
       r._senzaSegno = function(){ return !r._segno; };
       corpo.appendChild(r);
+
+      /* (25/09/2026, richiesta di Mauro) A conto giusto compaiono le scritte: «IRPEF lorda» sopra la prima
+         casella se ci ha scritto il totale del SUO blocco IRPEF lorda; «Detrazioni» sopra la seconda se, col
+         meno, ci ha scritto le SUE detrazioni (zero se il blocco non c'e' o non ha voci). Si confronta col suo
+         foglio e non con la soluzione: e' la conferma del procedimento, IRPEF lorda meno detrazioni. Le chiama
+         aggiorna(); prima del conto giusto le scritte sono vuote anche nel codice della pagina. */
+      var et1 = c1.querySelector('.etich'), et2 = c2.querySelector('.etich');
+      function centesimi(n){ return Math.round(n * 100); }
+      bl._etichette = function(lorda, detr){
+        var a = leggiNumero(in1.value), b = leggiNumero(in2.value);
+        var ok1 = lorda !== null && lorda > 0 && a !== null && centesimi(a) === centesimi(lorda);
+        var ok2 = r._segno === -1 && b !== null && centesimi(b) === centesimi(detr);
+        et1.textContent = ok1 ? 'IRPEF lorda' : '';
+        et2.textContent = ok2 ? 'Detrazioni' : '';
+      };
 
       if(init){
         if(init.v1) in1.value = init.v1;
@@ -7157,6 +7189,15 @@
         var lo = b.querySelector('[data-lorda]');
         if(lo) lo.textContent = euro(t);     /* la retribuzione lorda ripetuta in fondo al suo blocco */
       });
+
+      /* IRPEF netta: le scritte «IRPEF lorda» e «Detrazioni» a conto giusto (vedi creaIrpefNetta) */
+      var blNetta = null, lordaTot = null, detrTot = 0;
+      ed.querySelectorAll('.blocco').forEach(function(b){
+        if(b._id === 'irpef-n') blNetta = b;
+        else if(b._id === 'irpef-l' && b._totale) lordaTot = b._totale();
+        else if(b._id === 'detr' && b._sommaVoci) detrTot = b._sommaVoci();
+      });
+      if(blNetta && blNetta._etichette) blNetta._etichette(lordaTot, detrTot);
 
       /* L'imponibile fiscale non lo inventa l'app: retribuzione scritta dall'alunno
          meno i contributi scritti dall'alunno. Se sono sbagliati, resta sbagliato. */
@@ -9382,7 +9423,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-07';
+  var VERSIONE_APP = '20260925-08';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
