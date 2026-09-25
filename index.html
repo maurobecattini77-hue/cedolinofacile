@@ -2502,6 +2502,10 @@
             }
             stopBloccoWatcher();
             STATE.riammesso = true;
+            // (25/09/2026) Un Riammetti e' un avvio NUOVO e voluto: la guardia «un avvio solo» non deve scambiarlo per
+            // un doppione. Serviva quando l'alunno era su «Allenati» (foglio aperto): il rientro veniva scartato e il
+            // via libera, gia' consumato, lo lasciava fermo su «consegnato».
+            STATE.avviatoPin = null; STATE.avvioInCorsoDa = 0;
             rebuildConsegnateLocali(pin, function(){ cloudLeggiContestoAlunno(pin, avviaAlunnoConLista); });
           }, function(){ STATE.sbloccoInCorso = false; });
           return;
@@ -8385,10 +8389,12 @@
     (lista || []).forEach(function(f){
       var riga = document.createElement('div'); riga.style.cssText = 'display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center;';
       if(lista.length > 1){ var n = document.createElement('span'); n.textContent = 'Cedolino ' + numeroFattura(f.id); n.style.cssText = 'color:var(--muted); font-size:14px;'; riga.appendChild(n); }
+      // (25/09/2026) Il sorvegliante resta acceso anche qui: se il docente riammette, sospende o fa Reset mentre
+      // l'alunno rivede la correzione o si allena, l'app lo segue da sola (prima serviva uscire e rientrare col PIN).
       var b1 = document.createElement('button'); b1.className = 'btn-ghost'; b1.style.fontFamily = 'inherit'; b1.textContent = 'Rivedi la correzione';
-      b1.addEventListener('click', function(){ stopBloccoWatcher(); STATE.ritornoFn = ritorno; apriSoluzioneCompito(f); });
+      b1.addEventListener('click', function(){ STATE.ritornoFn = ritorno; apriSoluzioneCompito(f); });
       var b2 = document.createElement('button'); b2.className = 'btn-green'; b2.style.fontFamily = 'inherit'; b2.textContent = 'Allenati';   // btn-compila ha lo stile solo dentro i menu'
-      b2.addEventListener('click', function(){ stopBloccoWatcher(); STATE.ritornoFn = ritorno; apriEsercitazione(f); });
+      b2.addEventListener('click', function(){ STATE.ritornoFn = ritorno; apriEsercitazione(f); });
       riga.appendChild(b1); riga.appendChild(b2); host.appendChild(riga);
     });
   }
@@ -9096,6 +9102,11 @@
         }
         try{ if(tutteFatte && STATE.studente) sessionStorage.removeItem('cf_studente_attivo'); }catch(e){}
         if(tutteFatte){ stopAssegnazioneWatcher(); stopConsegnaWatcher(); stopPresenza(); }
+        /* (25/09/2026, trovato da Mauro sul telefono) Il sorvegliante del consegnato parte SUBITO, non dopo «Ho finito»:
+           mentre l'alunno guarda la correzione il docente puo' riammetterlo (rientra da solo nel suo cedolino),
+           sospendere (va ai compiti) o fare Reset (schermata del PIN). Prima il Riammetti restava muto finche'
+           l'alunno non usciva e rientrava col PIN. */
+        if(tutteFatte) startBloccoWatcher();
         var idCons = STATE.assegnataId;
         var chiudi = function(){
           if(tutteFatte){
@@ -9285,7 +9296,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-04';
+  var VERSIONE_APP = '20260925-05';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
