@@ -5101,6 +5101,7 @@
       }
     }catch(e){}
     var ripristinato = false;
+    try{ STATE.tsFoglio = STATE.tsFoglio || {}; STATE.tsFoglio[chiaveLavoro(STATE.studente.pin, STATE.assegnataId)] = local ? (local.ts || 0) : 0; }catch(e){}
     if(local){ byId('editor').innerHTML = local.html; wireEditor(); reidrataDinamici(); sbloccaEditorRipristinato(); ripristinato = true; }
     // Livello scelto dal DOCENTE in fase di assegnazione (predefinito Guidata).
     try{ var lvAss = localStorage.getItem('cf_livello'); if(lvAss) LIVELLO = Number(lvAss) || 1; }catch(e){}
@@ -5159,7 +5160,9 @@
           aggiornaNeretto();
         }catch(e){}
         STATE.caricamentoFoglio = false;
+        STATE.tsDaUsare = res.ts || 0;                          // tiene l'orario della versione arrivata dal cloud
         try{ salvaLavoro(); }catch(e){}                         // allineo il locale alla versione più fresca (questo È il suo lavoro)
+        STATE.tsDaUsare = null;
         STATE.caricamentoFoglio = era;
       };
       var chiediAlCloud = function(){
@@ -5497,10 +5500,35 @@
       if(!ed || ed.classList.contains('sol-mode')) return;
       commitValues(ed);
       var ora = Date.now();
+      var htmlOra = ed.innerHTML;
+      /* L'ORARIO DEL FOGLIO E' QUELLO DELL'ULTIMA MODIFICA, NON DELL'ULTIMO SALVATAGGIO (25/09/2026). Fra due copie
+         vince la piu' recente, quindi un foglio rimasto indietro su un dispositivo (una scheda vecchia, un telefono
+         ripreso dopo ore) non deve prendersi l'ora di adesso solo perche' viene salvato uscendo, sospendendo o
+         cambiando schermata: passerebbe davanti al lavoro vero fatto altrove. Se il foglio e' identico all'ultima
+         copia, tiene l'orario di quella; se arriva dal cloud, tiene l'orario del cloud (STATE.tsDaUsare). */
+      var chiaveOra = chiaveLavoro(STATE.studente.pin, STATE.assegnataId);
+      if(typeof STATE.tsDaUsare === 'number' && STATE.tsDaUsare > 0){ ora = STATE.tsDaUsare; }
+      else {
+        try{
+          var prevB0 = STATE.bozzaMappa ? STATE.bozzaMappa[STATE.assegnataId] : null;
+          var prevL0 = null; try{ var rawL0 = localStorage.getItem(chiaveOra); if(rawL0) prevL0 = JSON.parse(rawL0); }catch(eL0){}
+          if(prevB0 && prevB0.html === htmlOra && prevB0.ts) ora = prevB0.ts;
+          else if(prevL0 && prevL0.esercizioId === STATE.assegnataId && prevL0.html === htmlOra && prevL0.ts) ora = prevL0.ts;
+          /* DUE SCHEDE SULLO STESSO TELEFONO (25/09/2026, visto in 5I con Kabbori): una scheda rimasta indietro,
+             quando la classe viene sospesa, risalvava il SUO foglio vecchio e lo rimetteva nel cloud dopo la
+             consegna fatta dall'altra scheda. Se la copia di questo dispositivo e' piu' nuova di quella che ha
+             questa scheda, ed e' diversa, e qui l'alunno non ha toccato niente da allora, questa scheda e' rimasta
+             indietro: non salva. (Stesso dispositivo, stesso orologio: il confronto degli orari e' sicuro.) */
+          var tsMio = (STATE.tsFoglio || {})[chiaveOra];
+          if(prevL0 && prevL0.esercizioId === STATE.assegnataId && prevL0.html !== htmlOra && typeof tsMio === 'number'
+             && (prevL0.ts || 0) > tsMio && !((STATE.ultimoTocco || 0) > tsMio)) return;
+        }catch(eT){}
+      }
+      STATE.tsFoglio = STATE.tsFoglio || {}; STATE.tsFoglio[chiaveOra] = ora;
       // Il telefono puo' rifiutare la scrittura (memoria piena, navigazione privata): la copia nel cloud deve
       // partire LO STESSO. Prima stavano nello stesso «try» e saltavano insieme, in silenzio.
       try{
-      localStorage.setItem(chiaveLavoro(STATE.studente.pin, STATE.assegnataId), JSON.stringify({ esercizioId: STATE.assegnataId, html: ed.innerHTML, ts: ora }));
+      localStorage.setItem(chiaveOra, JSON.stringify({ esercizioId: STATE.assegnataId, html: htmlOra, ts: ora }));
       }catch(eLocale){}
       // Congelamento del tempo: il lavoro in corso di VERIFICA va anche nel cloud, con un piccolo ritardo
       // (accorpa le raffiche di battitura). Ogni versione porta un ORARIO (ts): al rientro vince la PIÙ RECENTE
@@ -5509,7 +5537,7 @@
         STATE.bozzaMappa = STATE.bozzaMappa || {};
         // «classe»: questo foglio e' stato lavorato in classe (poi nei compiti diventa «Svolto in classe»)
         var prevB = STATE.bozzaMappa[STATE.assegnataId];
-        STATE.bozzaMappa[STATE.assegnataId] = { html: ed.innerHTML, ts: ora, classe: !!((prevB && prevB.classe) || !STATE.modalitaCompiti) };
+        STATE.bozzaMappa[STATE.assegnataId] = { html: htmlOra, ts: ora, classe: !!((prevB && prevB.classe) || !STATE.modalitaCompiti || STATE.compitoInClasse) };
         if(STATE.bozzaCloudTimer) clearTimeout(STATE.bozzaCloudTimer);
         STATE.bozzaCloudTimer = setTimeout(pushBozzaCloud, 1500);
       }
@@ -9035,7 +9063,7 @@
       STATE.saveTimer = setTimeout(function(){ STATE.saveTimer = null; salvaLavoro(); }, ms);
     }
     byId('editor').addEventListener('input', function(e){
-      if(e && e.isTrusted) STATE.userTypedSinceLoad = true;   // SOLO digitazione VERA dell'alunno (le modifiche
+      if(e && e.isTrusted){ STATE.userTypedSinceLoad = true; STATE.ultimoTocco = Date.now(); }   // SOLO digitazione VERA dell'alunno (le modifiche
                                                               // automatiche dell'editor hanno isTrusted=false)
       programmaSalva(600);
     });
@@ -9044,7 +9072,7 @@
     // ritardo poteva ridisegnare il foglio sopra quello che l'alunno aveva appena fatto a colpi di tocchi.
     document.addEventListener('click', function(e){
       if(!e || !e.isTrusted || !e.target || !e.target.closest) return;
-      if(e.target.closest('#editor') || e.target.closest('#ced-tendine')) STATE.userTypedSinceLoad = true;
+      if(e.target.closest('#editor') || e.target.closest('#ced-tendine')){ STATE.userTypedSinceLoad = true; STATE.ultimoTocco = Date.now(); }
     }, true);
     // Salva ANCHE quando l'alunno esce da un campo: il "blur" applica la formattazione (es. 10000 -> 10.000)
     // DOPO l'ultimo tasto, e senza questo il valore formattato non finiva mai nel cloud (cambiando dispositivo
