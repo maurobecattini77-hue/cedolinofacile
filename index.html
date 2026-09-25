@@ -5405,7 +5405,10 @@
   function chiaveLavoro(pin, id){ return 'cf_lavoro' + (STATE.esercitazione ? 'E' : '') + '_' + pin + '_' + id; }
   // (23/09/2026) Butta da QUESTO dispositivo il lavoro azzerato dal docente (Reset o Carica classe): le copie del
   // foglio di verifica/esercitazione e dell'allenamento, gli elenchi delle consegnate e delle iniziate e, se e'
-  // l'alunno di questa pagina, la bozza in memoria coi salvataggi in partenza. I compiti a casa (cf_lavoroC_) restano.
+  // l'alunno di questa pagina, la bozza in memoria coi salvataggi in partenza.
+  // (25/09/2026) Via anche le copie dei compiti col formato di prima del 24/09 (cf_lavoroC_) e la bozza in memoria
+  // anche se la pagina e' nei compiti: dal 24/09 il foglio e' uno solo e dopo il Reset fa testo solo il cloud.
+  // Prima quelle copie sopravvivevano e tornavano su (il 1.000 di Becattini in PROVA, 25/09).
   function buttaLavoroAzzerato(pin){
     if(!pin) return;
     try{
@@ -5413,11 +5416,11 @@
       var rm = [];
       for(var i = 0; i < localStorage.length; i++){
         var k = localStorage.key(i);
-        if(k && (k.indexOf('cf_lavoro_' + pin + '_') === 0 || k.indexOf('cf_lavoroE_' + pin + '_') === 0)) rm.push(k);
+        if(k && (k.indexOf('cf_lavoro_' + pin + '_') === 0 || k.indexOf('cf_lavoroE_' + pin + '_') === 0 || k.indexOf('cf_lavoroC_' + pin + '_') === 0)) rm.push(k);
       }
       rm.forEach(function(k){ localStorage.removeItem(k); });
     }catch(e){}
-    if(STATE.studente && STATE.studente.pin === pin && !STATE.modalitaCompiti){
+    if(STATE.studente && STATE.studente.pin === pin){
       if(STATE.saveTimer){ clearTimeout(STATE.saveTimer); STATE.saveTimer = null; }
       if(STATE.bozzaCloudTimer){ clearTimeout(STATE.bozzaCloudTimer); STATE.bozzaCloudTimer = null; }
       if(STATE.bozzaRiprovaTimer){ clearTimeout(STATE.bozzaRiprovaTimer); STATE.bozzaRiprovaTimer = null; }
@@ -8239,13 +8242,15 @@
         STATE.compitiStatoInVolo = 0;
         var d = (r && !r.error) ? r.data : null;
         if(!d || !STATE.studente || STATE.studente.pin !== pin || !STATE.modalitaCompiti) return;
-        // Reset del docente mentre l'alunno e' nei compiti: prendo il contrassegno nuovo (se no le sue bozze
-        // verrebbero rifiutate) e rileggo i fogli dal cloud, tenendo quello che sta scrivendo adesso.
-        if(typeof d.azzeramento === 'string' && d.azzeramento !== STATE.azzVisto){
-          STATE.azzVisto = d.azzeramento; try{ localStorage.setItem('cf_azz_' + pin, d.azzeramento); }catch(e){}
-          var curId = STATE.assegnataId, cur = (curId && STATE.bozzaMappa) ? STATE.bozzaMappa[curId] : null;
-          STATE.bozzaMappa = {}; if(cur && curId) STATE.bozzaMappa[curId] = cur;
-          STATE.bozzaLetta = false; leggiBozzaCompiti(STATE.compitiGiro, 0);
+        // Reset del docente mentre l'alunno e' nei compiti: come in classe e sul consegnato, via le copie di questo
+        // dispositivo e schermata del PIN (25/09/2026). Prima qui si segnava il contrassegno nuovo SENZA buttare
+        // niente: il dispositivo si credeva in regola, rientrava senza PIN e rimetteva nel cloud i fogli vecchi.
+        if(typeof d.azzeramento === 'string' && typeof STATE.azzVisto === 'string' && d.azzeramento !== STATE.azzVisto){
+          stopCompitiWatcher(); STATE.sessioneChiusa = false; terminaSessioneVerifica(true); return;
+        }
+        if(typeof d.azzeramento === 'string' && typeof STATE.azzVisto !== 'string'){
+          // contrassegno mai visto da questa pagina: lo allineo come all'ingresso (se e' cambiato, via le copie vecchie)
+          allineaAzzeramento(pin, d.azzeramento); STATE.azzVisto = d.azzeramento;
         }
         if(d.fattura_assegnata && !d.sospesa && !d.assente){ stopCompitiWatcher(); passaAlCedolinoAssegnato(); }
       }, function(){ STATE.compitiStatoInVolo = 0; });
@@ -9195,7 +9200,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-01';
+  var VERSIONE_APP = '20260925-02';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
