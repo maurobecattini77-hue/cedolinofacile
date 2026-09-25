@@ -5787,17 +5787,14 @@
     function redditoPresunto(){ var n = leggiNumero(REDDITO); return n === null ? 0 : n; }
     function presuntoDaParti(){ var v = prodottoAlCentesimo(RED_FISC, RED_MENS, 1); return v === null ? '' : euro(v); }
     /* I due numeri presi dal blocco dove l'alunno li scrive: gli altri blocchi li mostrano uguali e tutte le fasce
-       si rifanno. Cambiato il reddito, cambiano gli importi: le conferme vanno ridate (solo se il reddito cambia
-       davvero: la virgola rimessa a posto uscendo dalla casella non conta). */
+       si rifanno (dal 26/09 non ci sono piu' conferme da ridare: i totali seguono da soli). */
     function cambiaPresunto(da){
-      var prima = REDDITO;
       REDDITO = presuntoDaParti();
       var bh = blocchiEl(); if(!bh) return;
       bh.querySelectorAll('input[data-red-fisc]').forEach(function(i){ if(i !== da) i.value = RED_FISC; });
       bh.querySelectorAll('input[data-red-mens]').forEach(function(i){ if(i !== da) i.value = RED_MENS; });
       bh.querySelectorAll('[data-red-ris]').forEach(function(s){ s.textContent = REDDITO || '0,00'; });
       bh.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._ricalcola) x._ricalcola(); });
-      if(REDDITO !== prima) bh.querySelectorAll('.blocco').forEach(function(b){ if(b._scuoti) b._scuoti(); });
     }
     /* Legge dai dati salvati di un blocco a fasce i due numeri e il reddito. Fogli di prima del 25/09: c'e' solo
        il reddito scritto a mano, e resta quello finche' l'alunno non scrive i due numeri. */
@@ -5941,7 +5938,6 @@
         if(Array.prototype.some.call(bl.querySelectorAll('input'), function(i){ return (i.value || '').trim() !== ''; })) return true;
         if(Array.prototype.some.call(bl.querySelectorAll('[data-riga]'), function(r){ return !!r._segno; })) return true;
         var st = bl._leggi ? bl._leggi() : null;
-        if(st && st.conf) return true;
         if(st && Array.isArray(st.righe) && st.righe.some(function(x){ return x && (x.scheda || x.n); })) return true;
       }catch(e){}
       return false;
@@ -6637,8 +6633,11 @@
       return d;
     }
 
-    /* ---------- blocco a elenco confermabile (Detrazioni / Voci integrative) ---------- */
-    function creaBloccoElenco(id, titolo, vociMenu, titoloMenu, lblPiu, lblConferma, init){
+    /* ---------- blocco a elenco (Detrazioni) ----------
+       (26/09/2026, richiesta di Mauro) Via il pulsante «Conferma le detrazioni», come il 25/09 quello dell'IRPEF
+       lorda: chi si scordava di premerlo restava col totale a zero (successo a 3 consegne vere, in 5G e 5I). Il
+       totale segue le voci mano a mano che si compilano; una detrazione di troppo si cancella col cestino. */
+    function creaBloccoElenco(id, titolo, vociMenu, titoloMenu, lblPiu, init){
       var bl = document.createElement('div');
       bl.className = 'blocco';
       bl.innerHTML =
@@ -6649,7 +6648,6 @@
       var r = document.createElement('div');
       r.setAttribute('data-riga','');
       r.style.display = 'none';
-      r._confermato = false;
       r._nelFoglio = false;
       r._tendine = [];
 
@@ -6674,24 +6672,7 @@
       elenco.className = 'elenco-detrazioni';
       corpo.appendChild(elenco);
 
-      var barra = document.createElement('div');
-      barra.className = 'barra-conferma';
-      var bconf = document.createElement('button');
-      bconf.type='button'; bconf.className='btn p'; bconf.textContent=lblConferma;
-      var esito = document.createElement('span');
-      esito.className='esito-conferma';
-      esito.textContent='Quando hai messo quelle che spettano, conferma.';
-      function scuoti(){
-        if(!r._confermato) return;
-        r._confermato = false;
-        esito.className = 'esito-conferma';
-        esito.textContent = 'Hai cambiato qualcosa: conferma di nuovo.';
-      }
-      function conferma(){
-        r._confermato = true;
-        esito.className = 'esito-conferma fatto';
-        esito.textContent = '✓ Confermate. Se cambi qualcosa, dovrai confermare di nuovo.';
-      }
+      function scuoti(){}   /* le righe avvisano quando cambiano: non c'e' piu' niente da riconfermare */
 
       var mw = document.createElement('div');
       mw.className = 'mwrap';
@@ -6708,10 +6689,6 @@
       else { elenco.appendChild(creaRigaScelta(scuoti, vociMenu, titoloMenu)); }
       corpo.appendChild(mw);
 
-      bconf.addEventListener('click', function(){ conferma(); aggiorna(); });
-      barra.appendChild(bconf); barra.appendChild(esito);
-      corpo.appendChild(barra);
-
       /* in fondo, il totale scritto chiaro: e' il numero da riportare nell'IRPEF netta (collaudo 15/09) */
       var contoTot = null;
       if(id === 'detr'){
@@ -6724,32 +6701,25 @@
       r._valore = function(){
         var t = 0;
         elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ t += x._mese(); });
-        var v = r._confermato ? t : 0;
-        if(contoTot) contoTot.querySelector('[data-totale-detr]').textContent = euro(v);
-        return v;
+        if(contoTot) contoTot.querySelector('[data-totale-detr]').textContent = euro(t);
+        return t;
       };
       r._senzaSegno = function(){ return false; };
       corpo.appendChild(r);
 
-      if(init && init.conf) conferma();
-
       bl._id = id;
-      bl._scuoti = scuoti;
-      bl._sommaVoci = function(){   /* per le scritte dell'IRPEF netta: le voci scritte, confermate o no */
-        var t = 0;
-        elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ t += x._mese(); });
-        return t;
-      };
+      bl._sommaVoci = r._valore;   /* per le scritte dell'IRPEF netta */
       bl._leggi = function(){
         var righe = [];
         elenco.querySelectorAll('.riga-detrazione').forEach(function(x){ if(x._leggi) righe.push(x._leggi()); });
-        return { reddito:REDDITO, redFisc:RED_FISC, mens:RED_MENS, righe:righe, conf:!!r._confermato };
+        /* conf resta scritto vero: le pagine vecchie ancora aperte sui telefoni, senza, darebbero il totale a zero */
+        return { reddito:REDDITO, redFisc:RED_FISC, mens:RED_MENS, righe:righe, conf:true };
       };
       blocchiEl().appendChild(bl);
     }
     function creaDetrazioni(init){
       creaBloccoElenco('detr', 'Detrazioni', VOCI_DETRAZIONI, 'Quale detrazione?',
-        '＋ Aggiungi una detrazione', 'Conferma le detrazioni', init);
+        '＋ Aggiungi una detrazione', init);
     }
     /* ---------- blocco SOMMA INTEGRATIVA (taglio del cuneo fiscale) ----------
        L'unica voce integrativa rimasta (15/09/2026: niente ANF, niente trattamento
@@ -7439,9 +7409,9 @@
         (detr.righe || []).forEach(function(rr){
           var m = meseRigaScelta(rr, detr.reddito);
           td += m;
-          if(detr.conf && rr && rr.scheda) d.detrVoci[rr.scheda] = (d.detrVoci[rr.scheda] || 0) + m;
+          if(rr && rr.scheda) d.detrVoci[rr.scheda] = (d.detrVoci[rr.scheda] || 0) + m;
         });
-        d.detr = detr.conf ? td : 0;
+        d.detr = td;   /* dal 26/09 niente conferma: contano le voci scritte, anche nei fogli di prima */
       }
       /* l'IRPEF netta dei dati fiscali e' quella del suo blocco; se manca, quella scritta nel netto */
       var netta = datiBlocco(stato, 'irpef-n');
@@ -9423,7 +9393,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-08';
+  var VERSIONE_APP = '20260926-01';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
