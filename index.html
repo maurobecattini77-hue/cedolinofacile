@@ -215,6 +215,9 @@
 .traccia-scorciatoie ul{ margin:0; padding-left:18px; }
   /* ---- Visualizzatore compiti a schede (come l'export): Fattura / Fattura corretta / Dashboard / Dashboard corretta ---- */
   .vc-bar{ width:100%; max-width:1360px; margin:0 auto; }
+  /* (25/09/2026, richiesta di Mauro) La barra delle schede resta ferma in alto mentre si scorre: si salta fra «mio» e
+     «corretto» senza risalire la pagina. Sfondo pieno, cosi' il foglio che scorre sotto non si vede attraverso. */
+  .vc-fissa{ position:sticky; top:0; z-index:60; background:var(--page); max-width:1360px; margin:0 auto 16px; padding:10px 0; }
   .vc-chips{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
   .vc-chip{ border:1px solid #cdd8e6; background:#f4f7fb; border-radius:9px; padding:6px 14px; cursor:pointer; font-size:13px; color:#3a475c; font-family:inherit; }
   .vc-chip:hover{ background:#e9f0fa; }
@@ -290,7 +293,7 @@
 
   /* ---- Stampa: mostra solo la vista attualmente stampata ---- */
   @media print{
-    .topbar, #gate, #docente, #verifica-bar, #editor, .cx-actions, .verifica, .banner, .vc-bar, .cx-foot{display:none !important;}
+    .topbar, #gate, #docente, #verifica-bar, #editor, .cx-actions, .verifica, .banner, .vc-bar, .vc-fissa, .cx-foot{display:none !important;}
     #cortesia-view:not(.printing){display:none !important;}
     #cortesia-view.printing{display:block !important;}
     #soluzione-view:not(.printing){display:none !important;}
@@ -512,6 +515,11 @@
     .cx-actions > button{ flex:1 1 auto; justify-content:center; }
     /* Visualizzatore a schede + valutazione */
     .vc-spacer{ margin-left:0; width:100%; }
+    /* (25/09/2026) Barra ferma compatta sul telefono: le schede su UNA riga; la riga «Scarica PDF / Ho finito» sta
+       sopra e, quando la barra si ferma in alto, scorre via (il top negativo lo calcola vcAggiustaFissa). */
+    .vc-row{ flex-direction:column-reverse; align-items:stretch; gap:8px; }
+    .vc-tabs{ display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:6px; }
+    .vc-tab{ padding:7px 4px; font-size:12.5px; line-height:1.2; text-align:center; }
     .vv-row{ flex-direction:column; }
     .vv-left{ flex:auto; }
     .vv-sum{ padding:12px; }
@@ -7709,7 +7717,7 @@
     var nTabs = (VC.mode === 'valuta' || VC.mode === 'alunno-valuta') ? 5 : 4;
     for(var i = 0; i < nTabs; i++){ (function(i){
       var b = document.createElement('button'); b.type = 'button'; b.className = 'vc-tab' + (i === VC.ct ? ' active' : '');
-      b.textContent = vcLabel(i); b.addEventListener('click', function(){ VC.ct = i; vcGo(); }); tabs.appendChild(b);
+      b.textContent = vcLabel(i); b.addEventListener('click', function(){ var segno = vcSegnaPunto(VC.ct, i); VC.ct = i; vcGo(segno); }); tabs.appendChild(b);
     })(i); }
     row.appendChild(tabs);
     var sp = document.createElement('div'); sp.className = 'vc-spacer';
@@ -7793,7 +7801,76 @@
     var a = FATTURE.find(function(y){ return y.id === id; });
     return a ? a.soluzione : null;
   }
-  function vcGo(){
+  /* (25/09/2026, richiesta di Mauro) IL «TAC TAC»: passando da «Il mio cedolino» a «Cedolino corretto» (o da «La mia
+     dashboard» a «Dashboard corretta») si resta sullo stesso punto, cosi' quello che cambia salta all'occhio.
+     Prima del cambio segno le voci riconoscibili (righe, blocchi, caselle del prospetto) con la loro posizione sullo
+     schermo; dopo il cambio rimetto la stessa voce nello stesso punto. Se nel foglio dell'alunno una voce manca, mi
+     aggancio alla voce precedente che c'e' in tutti e due. Fra cedolino e dashboard (fatti diversi) si riparte da capo. */
+  function vcStessoGruppo(a, b){ return a !== b && ((a <= 1 && b <= 1) || ((a === 2 || a === 3) && (b === 2 || b === 3))); }
+  function vcTestoChiave(el){
+    var q = function(s){ var x = el.querySelector(s); return x ? x.textContent : ''; };
+    var t;
+    if(el.tagName === 'TR') t = (el.cells && el.cells[0]) ? el.cells[0].textContent : el.textContent;
+    else if(el.matches('.ced-griglia > div')) t = q('.ced-l');
+    else if(el.matches('.riga, .riga-contributi')) t = q('.voce .n') || q('.nome-fisso .n');
+    else if(el.matches('.riga-detrazione')) t = q('.detr-testa .n');
+    else if(el.matches('.risultato, .detr-conto .cr')) t = q('.l');
+    else t = el.textContent;
+    return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  }
+  function vcPunti(){
+    var inDash = (VC.ct === 2 || VC.ct === 3);
+    var root = inDash ? byId('editor') : byId('soluzione-page');
+    if(!root) return [];
+    var sel = inDash
+      ? '.blocco-h .t, .sotto-h .t, .riga, .riga-contributi, .riga-detrazione, .scaglioni tbody tr, .risultato, .detr-conto .cr, .presunto, .calcolo-netta'
+      : 'tr, .ced-fascia-t, .ced-titolo, .ced-griglia > div';
+    var conta = {}, out = [];
+    root.querySelectorAll(sel).forEach(function(el){
+      var r = el.getBoundingClientRect(); if(!r.height) return;   // nascosti: non servono
+      var tipo = el.tagName === 'TR' ? 'tr' : ((el.className && String(el.className).split(' ')[0]) || el.tagName);
+      var base = tipo + '|' + vcTestoChiave(el);
+      conta[base] = (conta[base] || 0) + 1;
+      out.push({ key: base + '|' + conta[base], el: el, top: r.top, bottom: r.bottom });
+    });
+    return out;
+  }
+  function vcLineaBarra(){
+    var b = (VC.ct === 2 || VC.ct === 3) ? byId('sol-banner') : byId('sol-view-banner');
+    return b ? Math.max(0, b.getBoundingClientRect().bottom) : 0;
+  }
+  function vcSegnaPunto(prima, dopo){
+    if(!vcStessoGruppo(prima, dopo)) return null;
+    var punti = vcPunti(), linea = vcLineaBarra(), ancora = -1;
+    for(var i = 0; i < punti.length; i++){ if(punti[i].bottom > linea + 1){ ancora = i; break; } }
+    if(ancora === -1) ancora = punti.length - 1;
+    return { y: window.scrollY, punti: punti.map(function(p){ return { key:p.key, top:p.top }; }), ancora: ancora };
+  }
+  function vcRimettiPunto(segno){
+    window.scrollTo(0, segno.y);                      // prima: stessa altezza di prima
+    if(segno.ancora < 0) return;
+    var mappa = {}; vcPunti().forEach(function(p){ mappa[p.key] = p; });
+    for(var i = segno.ancora; i >= 0; i--){          // poi: la stessa voce nello stesso punto dello schermo
+      var p = segno.punti[i], q = mappa[p.key];
+      if(q){ window.scrollBy(0, q.el.getBoundingClientRect().top - p.top); return; }
+    }
+  }
+  /* Sul telefono resta visibile, ferma in alto, solo la fila delle schede: quello che le sta sopra (Scarica PDF, Ho
+     finito, i cedolini se sono piu' d'uno) scorre via, cosi' la barra ferma non si mangia mezzo schermo. */
+  function vcAggiustaFissa(){
+    ['sol-view-banner', 'sol-banner'].forEach(function(id){
+      var c = byId(id); if(!c) return;
+      var t = c.querySelector('.vc-tabs');
+      var off = 0;
+      if(t && window.matchMedia && window.matchMedia('(max-width: 600px)').matches){
+        off = Math.round(t.getBoundingClientRect().top - c.getBoundingClientRect().top) - 6;
+        if(off < 0) off = 0;
+      }
+      if(c.querySelector('.vc-bar')) c.style.top = (-off) + 'px';
+    });
+  }
+  window.addEventListener('resize', function(){ try{ if(VC && VC.fatture && VC.fatture.length) vcAggiustaFissa(); }catch(e){} });
+  function vcGo(segno){
     var f = VC.fatture[VC.cf] || {};
     if(VC.ct === 4){ vcRenderValutazione(); window.scrollTo(0, 0); return; }
     // «Non svolta» = l'alunno non è MAI entrato (consegna forzata). Mauro vuole vedere COMUNQUE lo scheletro
@@ -7812,7 +7889,7 @@
       if(VC.ct === 0){ page.innerHTML = f.nonSvolta ? (bannerNS + skelCort) : (statoAl ? buildCortesia({ tipo:'cedolino', stato:statoAl }) : (ripulisciHtmlAlunno(f.cortesiaAlunno) || '<i>—</i>')); }
       else { page.innerHTML = (solF && solF.stato) ? CED.cortesiaSoluzione(solF) : (f.cortesiaCorretta || '<i>—</i>'); }
       var act = byId('sol-view-actions'); if(act){ act.innerHTML = ''; act.style.display = 'none'; }
-      var ban = byId('sol-view-banner'); ban.className = ''; ban.style.cssText = 'margin-bottom:16px;'; ban.innerHTML = ''; ban.appendChild(vcBarNode());
+      var ban = byId('sol-view-banner'); ban.className = 'vc-fissa'; ban.style.cssText = ''; ban.innerHTML = ''; ban.appendChild(vcBarNode());
       show('soluzione-view');
     } else {
       var ed = byId('editor');
@@ -7841,11 +7918,12 @@
       else { ed.innerHTML = f.dashboardCorretta || ''; }
       ed.classList.add('sol-mode');
       var sb = byId('sol-banner');
-      if(sb){ sb.style.cssText = 'display:block; max-width:1360px; margin:0 auto 16px; padding:0; background:transparent; border:none; color:inherit; font-weight:400;'; sb.innerHTML = ''; sb.appendChild(vcBarNode()); }
+      if(sb){ sb.style.cssText = 'display:block; position:sticky; top:0; z-index:60; max-width:1360px; margin:0 auto 16px; padding:10px 0; background:var(--page); border:none; border-radius:0; color:inherit; font-weight:400;'; sb.innerHTML = ''; sb.appendChild(vcBarNode()); }
       show('editor');
       var vb = byId('verifica-bar'); if(vb) vb.style.display = 'none';
     }
-    window.scrollTo(0, 0);
+    vcAggiustaFissa();
+    if(segno) vcRimettiPunto(segno); else window.scrollTo(0, 0);
   }
 
   /* ---------- VALUTAZIONE (verifiche): scala voti, calcolo, salvataggio ---------- */
@@ -9296,7 +9374,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-05';
+  var VERSIONE_APP = '20260925-06';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
