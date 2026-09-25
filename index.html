@@ -1997,8 +1997,22 @@
       // completato=false: così non contano più come consegnate (dashboard/export/consegnate-locali guardano
       // completato=true), ma il LAVORO resta nel cloud dentro risposte.dashboardAlunno e l'alunno se lo ritrova
       // rientrando anche da un ALTRO dispositivo o dopo giorni (backup/ripristino compresi).
-      try{ SB.from('ced_studenti').update({ riammesso:true, stato:'in_corso', consegnata:false }).eq('pin', pin).then(function(){}, function(){}); }catch(e){}
-      try{ SB.from('ced_tentativi').update({ completato:false }).eq('pin', pin).eq('completato', true).neq('modalita', 'compiti').then(function(){}, function(){}); }catch(e){} // riapre solo le verifiche, non i compiti a casa
+      // (25/09/2026, regola di Mauro: «riapre sempre») Anche un cedolino ASSEGNATO che risulta consegnato nei
+      // compiti (fatto a casa, o diventato «svolto in classe · consegnato» con un Reset) si riapre: quella consegna
+      // diventa una consegna di classe riaperta (modalita 'allenamento', completato=false), cioe' esattamente come
+      // le altre che Riammetti riapre, e da li' recupero del lavoro, riconsegna, consegna forzata e Reset la
+      // trattano gia'. Prima il pulsante diceva «riammesso» e la lasciava chiusa: l'alunno tornava «consegnato».
+      // Le consegne dei compiti di cedolini NON assegnati restano come sono.
+      // Prima si riaprono le consegne, POI si da' il via libera all'alunno: se arrivasse prima, il suo dispositivo
+      // troverebbe ancora la consegna chiusa e tornerebbe «consegnato».
+      var idsAss = effectiveAssignedList(pin).map(function(x){ return x.id; });
+      var riaperture = [];
+      try{ riaperture.push(SB.from('ced_tentativi').update({ completato:false }).eq('pin', pin).eq('completato', true).neq('modalita', 'compiti')); }catch(e){}
+      if(idsAss.length){
+        try{ riaperture.push(SB.from('ced_tentativi').update({ completato:false, modalita:'allenamento' }).eq('pin', pin).eq('completato', true).eq('modalita', 'compiti').in('fattura_id', idsAss)); }catch(e){}
+      }
+      var viaLibera = function(){ try{ SB.from('ced_studenti').update({ riammesso:true, stato:'in_corso', consegnata:false }).eq('pin', pin).then(function(){}, function(){}); }catch(e){} };
+      Promise.all(riaperture.map(function(p){ return Promise.resolve(p).then(function(x){ return x; }, function(){ return null; }); })).then(viaLibera, viaLibera);
       if(CLOUD_STUD[pin]){ CLOUD_STUD[pin].stato = 'in_corso'; CLOUD_STUD[pin].consegnata = false; CLOUD_STUD[pin].riammesso = true; }
       CLOUD_CONS[pin] = {};
     } else {
@@ -9271,7 +9285,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260925-03';
+  var VERSIONE_APP = '20260925-04';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
