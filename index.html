@@ -111,7 +111,7 @@
   .ana-dd-empty{padding:10px 12px; font-size:13px; color:var(--muted);}
   input.locked{background:#eef2f7; color:#334155; cursor:default;}
   .ana-change{font-size:10px; font-weight:600; color:var(--accent); background:none; border:none; cursor:pointer; text-decoration:underline; padding:0; text-transform:none; letter-spacing:0; margin-left:6px;}
-  @media print{ .topbar, #editor, .cx-actions{display:none !important;} #cortesia-view{display:block !important;} .cx-page{border:none; box-shadow:none;} @page{size:A4; margin:12mm;} }
+  @media print{ .topbar, #editor, .cx-actions{display:none !important;} #cortesia-view{display:block !important;} .cx-page{border:none; box-shadow:none;} @page{size:A4; margin:0;} }
 </style>
 <style>
   /* ====== AGGIUNTE APP STUDENTE (login / docente / testo esercitazione / soluzione) ======
@@ -298,6 +298,14 @@
     #cortesia-view.printing{display:block !important;}
     #soluzione-view:not(.printing){display:none !important;}
     #soluzione-view.printing{display:block !important;}
+    /* (26/09/2026, richiesta di Mauro) Sfondi sempre stampati e niente intestazioni e piè di pagina del browser
+       (data, titolo, indirizzo, numero di pagina), senza toccare le caselle della finestra di stampa.
+       Le caselle una pagina non le puo' spuntare; pero' con print-color-adjust gli sfondi escono comunque, e
+       Chrome, Edge e Firefox (dalla 48) saltano intestazioni e piè di pagina se i margini della pagina non
+       bastano a contenerli: margini a zero, e i 12 mm di bianco li fa la vista stampata, su ogni foglio
+       (clone). Il fondo della pagina diventa bianco: se no, con gli sfondi accesi, coprirebbe tutto il foglio. */
+    html, body{background:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    #cortesia-view.printing, #soluzione-view.printing{padding:12mm; -webkit-box-decoration-break:clone; box-decoration-break:clone;}
   }
 
   /* ---- VISTA IN ATTESA (studente senza esercitazione assegnata) ---- */
@@ -2777,9 +2785,11 @@
         + '</div><div class="pdf-sub' + (corr ? ' corr' : '') + '">' + sub + '</div></div>'
         + contenuto + '</div>';
     }
-    var pcss = '@page{size:A4;margin:14mm;}'
+    // (26/09/2026) margini a zero = niente intestazioni e pie' di pagina del browser; i 14 mm li fa .pdf-page,
+    // su ogni foglio (clone), anche quando una consegna va su due fogli
+    var pcss = '@page{size:A4;margin:0;}'
       + 'body{background:#fff;margin:0;color:#26324a;font-family:inherit;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-      + '.pdf-page{page-break-after:always;}'
+      + '.pdf-page{page-break-after:always;padding:14mm;-webkit-box-decoration-break:clone;box-decoration-break:clone;}'
       + '.pdf-page:last-child{page-break-after:auto;}'
       + '.pdf-head{border-bottom:2px solid #3f6b52;padding-bottom:8px;margin-bottom:12px;}'
       + '.pdf-hrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}'
@@ -9393,7 +9403,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260926-01';
+  var VERSIONE_APP = '20260926-02';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
