@@ -9186,6 +9186,59 @@
     prova();
     setInterval(prova, 15000);
   })();
+  /* AGGIORNAMENTO AUTOMATICO DELLE PAGINE VECCHIE (25/09/2026, chiesto da Mauro). Il 24/09 in 5I due alunni
+     lavoravano con una versione dell'app di giorni prima, rimasta aperta nel telefono: il telefono riprende la
+     scheda com'era, senza ricaricarla. Ora la pagina chiede al sito quale versione e' pubblicata (versione.txt,
+     da aggiornare INSIEME a VERSIONE_APP a ogni pubblicazione) all'avvio, quando torna in primo piano e ogni
+     5 minuti; se ce n'e' una piu' nuova si ricarica da sola, ma SOLO quando e' sicuro: alunno sulla schermata
+     del PIN, nella lista dei compiti o sul foglio senza averlo toccato nell'ultimo minuto (prima mette al sicuro
+     il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
+     Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
+     10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
+  var VERSIONE_APP = '20260925-01';
+  (function(){
+    var ultimo = 0, inCorso = false;
+    function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
+    function momentoSicuro(){
+      if(STATE.consegnata || STATE.caricamentoFoglio) return false;
+      if(!STATE.studente) return visibile('gate');                         // docente o schermate sue: mai
+      if(visibile('menu-fatture')) return true;
+      if(visibile('editor')) return !((STATE.ultimoTocco || 0) > Date.now() - 60000);
+      return false;                                                        // consegnato, soluzione, attesa: si aspetta
+    }
+    function ricarica(){
+      if(inCorso) return; inCorso = true;
+      try{ sessionStorage.setItem('cf_aggiornata', String(Date.now())); }catch(e){}
+      // nei compiti la pagina non si segna l'alunno per il ricarico (lo fa solo l'ingresso in classe): senza questo
+      // dalla lista dei compiti si finirebbe sulla schermata del PIN
+      try{ if(STATE.studente && STATE.studente.pin) sessionStorage.setItem('cf_studente_attivo', STATE.studente.pin); }catch(e){}
+      try{ if(visibile('editor')) mettiAlSicuroLavoro(); }catch(e){}
+      var t0 = Date.now();
+      (function aspetta(){
+        if((STATE.bozzaInVolo || STATE.bozzaDaRimandare) && Date.now() - t0 < 6000){ setTimeout(aspetta, 250); return; }
+        try{ if(STATE.bozzaInVolo || STATE.bozzaDaRimandare) pushBozzaSubito(); }catch(e){}
+        setTimeout(function(){ location.reload(); }, 300);
+      })();
+    }
+    function controlla(){
+      if(inCorso || Date.now() - ultimo < 20000) return;
+      ultimo = Date.now();
+      try{ if(Date.now() - Number(sessionStorage.getItem('cf_aggiornata') || 0) < 600000) return; }catch(e){}
+      try{
+        fetch('versione.txt?t=' + Date.now(), { cache: 'no-store' }).then(function(r){ return (r && r.ok) ? r.text() : ''; }).then(function(t){
+          t = String(t || '').trim();
+          if(!/^\d{8}-\d{2}$/.test(t) || t <= VERSIONE_APP) return;
+          if(momentoSicuro()){ ricarica(); return; }
+          // non e' il momento: riprovo fra poco (il controllo al sito lo rifaccio, cosi' resta leggero)
+          setTimeout(function(){ ultimo = 0; controlla(); }, 30000);
+        }, function(){});
+      }catch(e){}
+    }
+    document.addEventListener('visibilitychange', function(){ if(document.visibilityState !== 'hidden') controlla(); });
+    window.addEventListener('pageshow', function(e){ if(e && e.persisted) controlla(); });
+    setInterval(function(){ if(document.visibilityState !== 'hidden') controlla(); }, 5 * 60 * 1000);
+    setTimeout(controlla, 4000);
+  })();
   /* fine boot */
 })();
 </script>
