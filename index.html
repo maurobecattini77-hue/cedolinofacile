@@ -2668,6 +2668,74 @@
       setTimeout(function(){ if(a.parentNode) a.parentNode.removeChild(a); URL.revokeObjectURL(url); }, 800);
     }catch(e){ showAlert('Download non riuscito: '+e.message); }
   }
+  /* (26/09/2026) La dashboard per i file esportati, disegnata dallo stato del foglio come nella Valuta (sola lettura,
+     impaginazione di oggi) e SENZA la striscia verde «SOLUZIONE … Torna alla soluzione» dell'editor, che nel file
+     compariva sopra ogni dashboard, anche sopra quella dell'alunno. stato null = il foglio vuoto (non svolto).
+     Usa l'editor della pagina (dal docente e' fermo): chi la chiama lo rimette pulito alla fine con resetEditor(). */
+  function fotoDashboard(stato, conAvviso){
+    var ed = byId('editor'); if(!ed) return '';
+    try{
+      ed.innerHTML = PRISTINE_EDITOR;
+      if(stato){
+        var st = ed.querySelector('#ced-stato'); if(st) st.setAttribute('data-stato', JSON.stringify(stato));
+        if(CED.mostraFoglio(stato)) lockEditor();
+        if(conAvviso) avvisoVociAlterate(ed, stato);
+      }
+      ed.classList.add('sol-mode');
+      commitValues(ed);
+      var copia = ed.cloneNode(true);
+      var sb = copia.querySelector('#sol-banner'); if(sb) sb.parentNode.removeChild(sb);
+      return copia.innerHTML;
+    }catch(e){ return ''; }
+  }
+  // La stessa striscia tolta da una fotografia salvata (consegne vecchie senza stato). DOMParser: niente viene eseguito.
+  function togliStriscia(html){
+    if(!html) return '';
+    try{
+      var doc = new DOMParser().parseFromString('<div id="cf-x">' + html + '</div>', 'text/html');
+      var root = doc.getElementById('cf-x'); if(!root) return html;
+      var sb = root.querySelector('#sol-banner'); if(sb) sb.parentNode.removeChild(sb);
+      return root.innerHTML;
+    }catch(e){ return html; }
+  }
+  /* (26/09/2026) Un cedolino consegnato, pronto per i file esportati (HTML e PDF). Il file esportato e' autonomo e non
+     puo' ricostruire niente da solo: qui, dove ci sono l'archivio e l'editor, si cuoce dentro tutto quello che serve.
+     - le CORRETTE sempre dall'archivio del docente: dal 18/09 la consegna non le porta (l'alunno non ha la soluzione);
+     - le DASHBOARD (solo per l'HTML) disegnate dallo stato del foglio, come nella Valuta;
+     - il TESTO dell'esercizio come lo riceveva l'alunno: per il PDF e sopra le dashboard dell'HTML;
+     - l'HTML arrivato dal dispositivo dell'alunno passa dal filtro di sicurezza, come in ogni altra vista.
+     cache: le dashboard corrette gia' disegnate in questo giro, una per esercizio. */
+  function cedolinoPerExport(id, t, ns, conDashboard, cache){
+    var farch = (typeof FATTURE !== 'undefined' && FATTURE) ? FATTURE.find(function(y){ return y.id === id; }) : null;
+    var sol = farch ? farch.soluzione : null;
+    var dsc = (farch && farch.testo) ? farch.testo.discorsivo : null;
+    var traccia = (dsc && dsc.manuale && dsc.manuale.length) ? dsc.manuale
+                : ((dsc && dsc.assistito && dsc.assistito.length) ? dsc.assistito
+                : ((farch && farch.testo && farch.testo.operazione) ? [farch.testo.operazione] : []));
+    var bannerNS = '<div class="cx-nonsvolta">Cedolino non compilato</div>';
+    var cortCorr = '';
+    if(sol && (sol.stato || sol.passaggi)){ try{ cortCorr = buildCortesia(sol); }catch(e){} }
+    if(!cortCorr) cortCorr = ripulisciHtmlAlunno(t.cortesiaCorretta || '');
+    var out = { num:numeroFattura(id), titolo:(t.titolo || ''), nonSvolta:!!ns, consegna:(t.consegna || ''),
+                traccia:traccia, tracciaTitolo:((farch && farch.titolo) || ''),
+                cortesiaAlunno:(ns ? (bannerNS + buildCortesia({ tipo:'cedolino', stato:null })) : ripulisciHtmlAlunno(t.cortesiaAlunno || '')),
+                cortesiaCorretta:cortCorr, dashboardAlunno:'', dashboardCorretta:'' };
+    if(conDashboard){
+      if(ns) out.dashboardAlunno = bannerNS + fotoDashboard(null, false);
+      else {
+        var statoAl = statoDaHtml(t.dashboardAlunno);
+        out.dashboardAlunno = statoAl ? fotoDashboard(statoAl, true) : togliStriscia(ripulisciHtmlAlunno(t.dashboardAlunno || ''));
+      }
+      if(sol && sol.stato){
+        cache = cache || {};
+        if(!Object.prototype.hasOwnProperty.call(cache, id)) cache[id] = fotoDashboard(sol.stato, false);
+        out.dashboardCorretta = cache[id];
+      } else {
+        out.dashboardCorretta = togliStriscia(ripulisciHtmlAlunno(t.dashboardCorretta || ''));
+      }
+    }
+    return out;
+  }
   // Costruisce e SCARICA il documento HTML interattivo dell'export. Usato SIA dalle verifiche SIA dai compiti:
   // riceve già l'array `data` (uno per alunno, con le sue fatture) e produce lo stesso visualizzatore a schede.
   function buildExportDoc(data, cl, titolo, filePrefix){
@@ -2679,6 +2747,10 @@
       + 'function INITS(n){var p=(""+(n||"")).trim().split(/\\s+/);return (((p[0]||"")[0]||"")+((p[1]||"")[0]||"")).toUpperCase();}'
       + 'var AVA=[["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],["#E1F5EE","#0F6E56"],["#E6F1FB","#0C447C"],["#FBEAF0","#72243E"],["#FAEEDA","#633806"]];'
       + 'function ACOL(p){var s=0,t=""+(p||"");for(var i=0;i<t.length;i++)s+=t.charCodeAt(i);return AVA[s%AVA.length];}'
+      // (26/09/2026) sopra le due dashboard il testo dell'esercizio, lo stesso riquadro che l'alunno ha davanti
+      // compilando: «–» lo chiude, «+» lo riapre, e resta com'e' passando da una scheda o da un alunno all'altro
+      + 'var TXC=false;'
+      + 'function TX(f){var p=f.traccia||[];if(!p.length)return "";var h=\'<div class="verifica"><div class="verifica-head"><div class="tit">\'+E(f.tracciaTitolo||"Testo dell\'esercitazione")+\'</div><button type="button" class="toggle" title="Nascondi/mostra il testo">\'+(TXC?"+":"–")+\'</button></div><div class="verifica-body\'+(TXC?" collapsed":"")+\'">\';for(var i=0;i<p.length;i++){h+=\'<p class="vb-op">\'+E(p[i])+\'</p>\';}return h+\'</div></div>\';}'
       + 'function VALHTML(d){var v=d.val;if(!v)return "";var perc=(v.perc!=null?Math.round(v.perc)+"%":"—");var tot=(v.max_tot?(v.totale+" / "+v.max_tot):"— / —");var voto=(v.voto_finale||"—");var s=\'<div class="val-sum"><div class="vc"><div class="vl">Totale</div><div class="vv">\'+E(tot)+\'</div></div><div class="vc"><div class="vl">Percentuale</div><div class="vv">\'+E(perc)+\'</div></div><div class="vc"><div class="vl">Voto finale</div><div class="vv vbig">\'+E(voto)+\'</div></div></div>\';var items=v.items||[];for(var i=0;i<items.length;i++){var it=items[i];var vt=(it.voto!=null?it.voto:"—");var mx=(it.max!=null?it.max:"—");s+=\'<div class="val-row"><div class="val-l"><div class="val-fh">Cedolino \'+E(it.num)+\'</div><div class="val-score">\'+E(vt)+\' <span style="color:#8a94a6">/ \'+E(mx)+\'</span></div></div><div class="val-g">\'+(it.giudizio?E(it.giudizio):\'<span style="color:#8a94a6">Nessun commento.</span>\')+\'</div></div>\';}return s;}'
       + 'function over(){var HASVOTO=DATA.some(function(x){return x.voto;});var vh=HASVOTO?\'<th style="width:90px;text-align:center">Voto</th>\':"";var h=\'<table class="exp-tbl"><thead><tr><th style="width:130px">PIN</th><th>Studente</th><th style="width:210px">Esercizi consegnati</th>\'+vh+\'</tr></thead><tbody>\';for(var i=0;i<DATA.length;i++){var d=DATA[i];var c=ACOL(d.pin);var vcls=(d.perc!=null&&d.perc>=59.1)?"votopill vp-ok":"votopill vp-no";var vc=HASVOTO?(\'<td style="text-align:center">\'+(d.voto?(\'<span class="\'+vcls+\'">\'+E(d.voto)+\'</span>\'):"—")+\'</td>\'):"";h+=\'<tr data-i="\'+i+\'"><td class="pinc">\'+E(d.pin)+\'</td><td><span class="ava" style="background:\'+c[0]+\';color:\'+c[1]+\'">\'+E(INITS(d.nome))+\'</span><span class="stud">\'+E(d.nome)+\'</span></td><td class="numc">\'+E(d.nums)+\'</td>\'+vc+\'</tr>\';}h+=\'</tbody></table>\';var ov=document.getElementById("exp-over");ov.innerHTML=h;ov.style.display="";document.getElementById("exp-det").style.display="none";var tr=ov.querySelectorAll("tbody tr");for(var k=0;k<tr.length;k++){tr[k].onclick=function(){det(this.getAttribute("data-i"));};}}'
       + 'function det(i){var d=DATA[i];var cogn=(d.cognome||((d.nome||"").split(" ")[0])||"");document.getElementById("exp-over").style.display="none";var el=document.getElementById("exp-det");el.style.display="";'
@@ -2686,12 +2758,15 @@
       + 'for(var k=0;k<d.fatture.length;k++){h+=\'<button class="exp-fbtn\'+(k===0?" active":"")+\'" data-f="\'+k+\'">Cedolino \'+E(d.fatture[k].num)+\'</button>\';}'
       + 'h+=\'</div><div class="exp-tabs"><button class="exp-tab active" data-t="0">Cedolino \'+E(cogn)+\'</button><button class="exp-tab" data-t="1">Cedolino corretto</button><button class="exp-tab" data-t="2">Dashboard \'+E(cogn)+\'</button><button class="exp-tab" data-t="3">Dashboard corretta</button>\'+(d.val?\'<button class="exp-tab" data-t="4">Valutazione</button>\':"")+\'</div><div class="exp-content" id="exp-c"></div>\';'
       + 'el.innerHTML=h;el.querySelector(".exp-back").onclick=over;var cf=0,ct="0";var fb=el.querySelectorAll(".exp-fbtn");var tb=el.querySelectorAll(".exp-tab");'
-      + 'function render(){var f=d.fatture[cf];var c=document.getElementById("exp-c");if(ct==="0"){c.innerHTML=\'<div class="cx-page">\'+(f.cortesiaAlunno||"<i>&#8212;</i>")+\'</div>\';}else if(ct==="1"){c.innerHTML=\'<div class="cx-page">\'+(f.cortesiaCorretta||"<i>&#8212;</i>")+\'</div>\';}else if(ct==="2"){c.innerHTML=\'<div id="editor" class="wrap sol-mode">\'+(f.dashboardAlunno||"")+\'</div>\';}else if(ct==="3"){c.innerHTML=\'<div id="editor" class="wrap sol-mode">\'+(f.dashboardCorretta||"")+\'</div>\';}else if(ct==="4"){c.innerHTML=VALHTML(d);}}'
+      + 'function render(){var f=d.fatture[cf];var c=document.getElementById("exp-c");if(ct==="0"){c.innerHTML=\'<div class="cx-page">\'+(f.cortesiaAlunno||"<i>&#8212;</i>")+\'</div>\';}else if(ct==="1"){c.innerHTML=\'<div class="cx-page">\'+(f.cortesiaCorretta||"<i>&#8212;</i>")+\'</div>\';}else if(ct==="2"){c.innerHTML=\'<div id="editor" class="wrap sol-mode">\'+TX(f)+(f.dashboardAlunno||"")+\'</div>\';}else if(ct==="3"){c.innerHTML=\'<div id="editor" class="wrap sol-mode">\'+TX(f)+(f.dashboardCorretta||"")+\'</div>\';}else if(ct==="4"){c.innerHTML=VALHTML(d);}'
+      + 'var tg=c.querySelector(".verifica .toggle");if(tg){tg.onclick=function(){TXC=!TXC;var vb=c.querySelector(".verifica-body");if(vb){vb.className="verifica-body"+(TXC?" collapsed":"");}this.textContent=TXC?"+":"–";};}}'
       + 'for(var a=0;a<fb.length;a++){fb[a].onclick=function(){cf=+this.getAttribute("data-f");for(var x=0;x<fb.length;x++){fb[x].className="exp-fbtn";}this.className="exp-fbtn active";render();};}'
       + 'for(var b=0;b<tb.length;b++){tb[b].onclick=function(){ct=this.getAttribute("data-t");for(var y=0;y<tb.length;y++){tb[y].className="exp-tab";}this.className="exp-tab active";render();};}'
       + 'render();}'
       + 'over();';
-    var doc = '<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>' + esc(titolo) + ' ' + esc(cl) + '</title><style>' + css + xcss + '</style></head><body>'
+    // (26/09/2026) gli stessi caratteri dell'app: il riquadro del testo e le dashboard escono come quando si compila
+    var fonti = '<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..600&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">';
+    var doc = '<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">' + fonti + '<title>' + esc(titolo) + ' ' + esc(cl) + '</title><style>' + css + xcss + '</style></head><body>'
       + '<div class="exp-head"><div class="ff-badge"><span class="ff">CF</span><span class="fold"></span></div><div class="ff-word">Cedolino<br/>Facile</div><div style="margin-left:auto;text-align:right;color:#3f6b52;"><div style="font-weight:500;font-size:18px;">' + (cl ? ('Classe ' + esc(cl) + ' &#183; ') : '') + esc(titolo) + '</div><div style="font-size:13px;color:#5b6b82;margin-top:2px;">' + esc(new Date().toLocaleString('it-IT')) + ' &#183; ' + data.length + (data.length===1?' alunno':' alunni') + '</div></div></div>'
       + '<div class="exp-wrap"><div id="exp-over"></div><div id="exp-det" style="display:none;"></div></div>'
       + '<scr' + 'ipt>' + js + '</scr' + 'ipt></body></html>';
@@ -2700,9 +2775,18 @@
   // Raccoglie i dati delle consegne di VERIFICA della classe attiva (uno per alunno, con le sue fatture e la
   // valutazione) e li passa a cb(data). Usata SIA da «Esporta HTML» SIA da «Esporta PDF»: un solo giro, così
   // i due export non divergono mai.
-  function raccogliDatiConsegne(cb){
+  // conDashboard: solo l'HTML le mostra (il PDF no, scelta di Mauro), quindi solo per l'HTML si disegnano.
+  function raccogliDatiConsegne(cb, conDashboard, archivioPronto){
     if(!SB){ showAlert('Cloud non disponibile.'); return; }
     if(!(CLASSE && CLASSE.alunni && CLASSE.alunni.length)){ showAlert('Seleziona prima la classe da esportare.'); return; }
+    if(!archivioPronto){
+      archivioDocente(function(ok){
+        // il PDF le soluzioni non le usa: si ferma solo l'HTML, che senza uscirebbe con le corrette vuote
+        if(!ok && conDashboard){ showAlert('Esportazione NON fatta: non riesco a leggere dal cloud le soluzioni degli esercizi, e senza quelle cedolino e dashboard corretti uscirebbero vuoti. Controlla il collegamento e riprova.'); return; }
+        raccogliDatiConsegne(cb, conDashboard, true);
+      });
+      return;
+    }
     // SOLO le consegne di VERIFICA: i compiti a casa hanno il loro export («Archivio compiti») e non devono
     // finire qui, altrimenti nel compito d'esame comparirebbe il lavoro fatto a casa.
     SB.from('ced_tentativi').select('pin,fattura_id,risposte,created_at').eq('completato', true).neq('modalita', 'compiti').order('created_at', {ascending:true}).then(function(res){
@@ -2720,7 +2804,7 @@
       var pinsClasse = {};
       ((CLASSE && CLASSE.alunni) ? CLASSE.alunni : []).forEach(function(a){ pinsClasse[a.pin] = true; });
       // Includi SOLO gli alunni che hanno consegnato TUTTE le fatture a loro assegnate; una riga a testa.
-      var data = [];
+      var data = [], cache = {};
       Object.keys(byPin).forEach(function(pin){
         if(!pinsClasse[pin]) return;              // non è di questa classe → fuori
         var assigned = effectiveAssignedList(pin);
@@ -2733,39 +2817,20 @@
         var nomeCompleto = al ? ((al.cognome||'') + ' ' + (al.nome||'')).trim() : (primo.nome || pin);
         var fatture = assigned.slice().sort(function(a,b){ return (parseInt(numeroFattura(a.id),10)||0)-(parseInt(numeroFattura(b.id),10)||0); }).map(function(x){
           var t = cons[x.id];
-          var ns = (t.nonSvolta||false);
-          // Il file esportato e' autonomo e non puo' ricostruire nulla da solo: qui, dove ho l'archivio e
-          // l'editor, cuocio dentro tutto quello che serve.
-          // (1) Le CORRETTE devono esserci SEMPRE: se non erano state salvate (alunno mai entrato), le ricostruisco.
-          var cortCorr = t.cortesiaCorretta || '', dashCorr = t.dashboardCorretta || '';
-          if(!cortCorr || !dashCorr){ var rc = correttaDaArchivio(x.id); if(!cortCorr) cortCorr = rc.cort; if(!dashCorr) dashCorr = rc.dash; }
-          // (2) Mai entrato: al posto del vuoto, lo SCHELETRO vuoto (fattura e dashboard come all'inizio) + cartello.
-          var cortAl = t.cortesiaAlunno || '', dashAl = t.dashboardAlunno || '';
-          if(ns){
-            var bannerNS = '<div class="cx-nonsvolta">Cedolino non compilato</div>';
-            var skelCort = buildCortesia({ tipo:'cedolino', stato:null });
-            cortAl = bannerNS + skelCort;
-            dashAl = bannerNS + ((typeof PRISTINE_EDITOR !== 'undefined' && PRISTINE_EDITOR) ? PRISTINE_EDITOR : '');
-          }
-          // Il testo dell'esercizio (la traccia) come lo riceveva l'alunno: dall'archivio. Preferisco la
-          // versione completa (manuale); ripiego su assistito o sulla riga d'operazione. Serve al PDF.
-          var farch = (typeof FATTURE !== 'undefined' && FATTURE) ? FATTURE.find(function(y){ return y.id === x.id; }) : null;
-          var dsc = (farch && farch.testo) ? farch.testo.discorsivo : null;
-          var traccia = (dsc && dsc.manuale && dsc.manuale.length) ? dsc.manuale
-                      : ((dsc && dsc.assistito && dsc.assistito.length) ? dsc.assistito
-                      : ((farch && farch.testo && farch.testo.operazione) ? [farch.testo.operazione] : []));
-          return { num:numeroFattura(x.id), titolo:t.titolo, nonSvolta:ns, consegna:(t.consegna||''), traccia:traccia, cortesiaAlunno:cortAl, cortesiaCorretta:cortCorr, dashboardAlunno:dashAl, dashboardCorretta:dashCorr };
+          // Mai entrato (nonSvolta): al posto del vuoto lo SCHELETRO (cedolino e dashboard come all'inizio) + cartello.
+          return cedolinoPerExport(x.id, t, (t.nonSvolta||false), conDashboard, cache);
         });
         var cvs = (CLOUD_STUD[pin] || {}).valutazione || null;
         data.push({ pin:pin, nome:nomeCompleto, cognome:cognome, nums:fatture.map(function(f){ return f.num; }).join(' · '), fatture:fatture, val:cvs, voto:(cvs ? cvs.voto_finale : ''), perc:(cvs && cvs.perc != null ? cvs.perc : null) });
       });
+      if(conDashboard){ try{ resetEditor(); }catch(e){} }   // l'editor usato per disegnare le dashboard torna pulito
       data.sort(function(a,b){ return profInCima(a,b) || (a.cognome||a.nome).localeCompare((b.cognome||b.nome), 'it'); });
       if(!data.length){ showAlert('Nessun alunno ha ancora consegnato tutti i cedolini assegnati.'); return; }
       cb(data);
     }, function(){ showAlert('Errore nel recupero delle consegne.'); });
   }
-  function esportaHTML(){ raccogliDatiConsegne(function(data){ buildExportDoc(data, (CLASSE&&CLASSE.classe)||'', 'Consegne', 'consegne'); }); }
-  function esportaPDF(){ raccogliDatiConsegne(function(data){ stampaPdfConsegne(data, (CLASSE&&CLASSE.classe)||''); }); }
+  function esportaHTML(){ raccogliDatiConsegne(function(data){ buildExportDoc(data, (CLASSE&&CLASSE.classe)||'', 'Consegne', 'consegne'); }, true); }
+  function esportaPDF(){ raccogliDatiConsegne(function(data){ stampaPdfConsegne(data, (CLASSE&&CLASSE.classe)||''); }, false); }
   // Costruisce un documento A4 «da stampare» (scorre verso il basso), un alunno per pagina: la sua fattura di
   // cortesia, la fattura corretta e la valutazione col commento. NIENTE dashboard (scelta di Mauro). Lo apro in
   // un iframe isolato e lancio la stampa: il browser offre «Salva come PDF», che si apre ovunque (Google Drive).
@@ -2909,8 +2974,15 @@
   }
   // Export dei COMPITI A CASA: come l'export verifiche, ma prende TUTTI i compiti consegnati (modalita='compiti'),
   // senza il vincolo dell'assegnazione (nei compiti l'alunno sceglie da sé quali fare).
-  function esportaCompitiHTML(classe){
+  function esportaCompitiHTML(classe, archivioPronto){
     if(!SB){ showAlert('Cloud non disponibile.'); return; }
+    if(!archivioPronto){
+      archivioDocente(function(ok){
+        if(!ok){ showAlert('Esportazione NON fatta: non riesco a leggere dal cloud le soluzioni degli esercizi, e senza quelle cedolino e dashboard corretti uscirebbero vuoti. Controlla il collegamento e riprova.'); return; }
+        esportaCompitiHTML(classe, true);
+      });
+      return;
+    }
     var senzaClasse = (!classe || classe === '—');
     var q = SB.from('ced_tentativi').select('pin,classe,fattura_id,risposte,created_at').eq('modalita', 'compiti').eq('completato', true);
     // Ogni cartella esporta SOLO il proprio contenuto: «Senza classe» non deve tirar dentro le altre classi.
@@ -2921,17 +2993,15 @@
       if(!rows.length){ showAlert('Nessun compito da esportare.'); return; }
       var byPin = {};
       rows.forEach(function(r){ var rr=r.risposte||{}; if(!byPin[r.pin]) byPin[r.pin]={ nome:(rr.nome||r.pin), cognome:(rr.cognome||''), items:{} }; byPin[r.pin].items[r.fattura_id] = { titolo:(rr.titolo||r.fattura_id||''), cortesiaAlunno:(rr.cortesiaAlunno||''), cortesiaCorretta:(rr.cortesiaCorretta||''), dashboardAlunno:(rr.dashboardAlunno||''), dashboardCorretta:(rr.dashboardCorretta||'') }; });
-      var data = [];
+      var data = [], cache = {};
       Object.keys(byPin).forEach(function(pin){
         var s = byPin[pin];
         var ids = Object.keys(s.items).sort(function(a,b){ return (parseInt(numeroFattura(a),10)||0)-(parseInt(numeroFattura(b),10)||0); });
-        var fatture = ids.map(function(id){ var t=s.items[id];
-          // 22/09/2026: la versione corretta manca nelle consegne dal 18/09 (l'alunno non ha la soluzione): la ricostruisco dall'archivio.
-          var cortCorr = t.cortesiaCorretta || '', dashCorr = t.dashboardCorretta || '';
-          if(!cortCorr || !dashCorr){ var rc = correttaDaArchivio(id); if(!cortCorr) cortCorr = rc.cort; if(!dashCorr) dashCorr = rc.dash; }
-          return { num:numeroFattura(id), titolo:t.titolo, nonSvolta:false, cortesiaAlunno:t.cortesiaAlunno, cortesiaCorretta:cortCorr, dashboardAlunno:t.dashboardAlunno, dashboardCorretta:dashCorr }; });
+        // 22/09/2026: la versione corretta manca nelle consegne dal 18/09 (l'alunno non ha la soluzione): viene dall'archivio.
+        var fatture = ids.map(function(id){ return cedolinoPerExport(id, s.items[id], false, true, cache); });
         data.push({ pin:pin, nome:s.nome, cognome:s.cognome, nums:fatture.map(function(f){ return f.num; }).join(' · '), fatture:fatture });
       });
+      try{ resetEditor(); }catch(e){}   // l'editor usato per disegnare le dashboard torna pulito
       data.sort(function(a,b){ return profInCima(a,b) || (a.cognome||a.nome).localeCompare((b.cognome||b.nome), 'it'); });
       // Il titolo del file dice la verità: se sto esportando «Senza classe», non spaccio i compiti
       // per quelli della classe attiva (prima ci scriveva il nome della classe sbagliata).
@@ -3535,6 +3605,17 @@
         cb && cb(false);
       }, function(){ cb && cb(false); });
     }catch(e){ cb && cb(false); }
+  }
+  /* (26/09/2026) Il DOCENTE deve avere l'archivio CON le soluzioni: servono per ricostruire cedolino e dashboard
+     corretti (Valuta, Archivio, esportazioni). All'apertura della pagina, prima dell'accesso, l'archivio arriva dalla
+     porta degli alunni, che le soluzioni non le da', e dopo l'accesso nessuno lo richiedeva: il 26/09 alle 8.36
+     «Esporta HTML» e' uscito con «Cedolino corretto» e «Dashboard corretta» vuoti (log del cloud: cf_esercizi
+     all'apertura, poi l'accesso, poi nessuna lettura dell'archivio). Se manca anche una sola soluzione, lo rileggo.
+     cb(true) = archivio completo. */
+  function archivioCompleto(){ return !!(FATTURE && FATTURE.length && FATTURE.every(function(f){ return f && f.soluzione; })); }
+  function archivioDocente(cb){
+    if(!sonoDocente() || archivioCompleto()){ cb && cb(archivioCompleto()); return; }
+    cloudAggiornaArchivio(function(){ cb && cb(archivioCompleto()); });
   }
   function previewTesto(f){
     var d = f && f.testo && f.testo.discorsivo;
@@ -7780,6 +7861,7 @@
     VC.fatture = (rec && rec.fatture) || [];
     VC.cf = (rec && rec.cf) ? rec.cf : 0;
     VC.ct = 0; VC.mode = mode || 'alunno'; VC.cognome = (rec && rec.cognome) || ''; VC.exitFn = exitFn || null;
+    VC.testoChiuso = false;   // il testo dell'esercizio si apre aperto, come quando si compila
     VC.pin = (rec && rec.pin) || ''; VC.nome = (rec && rec.nome) || ''; VC.val = (rec && rec.valutazione) || null;
     VC.esciTesto = (rec && rec.esciTesto) || null;   // scritta del pulsante d'uscita, se chi apre la vista ne vuole una sua
     if(!VC.fatture.length){ showAlert('Nessun cedolino da mostrare.'); if(VC.exitFn) VC.exitFn(); return; }
@@ -7877,6 +7959,29 @@
       var x = st ? JSON.parse(st.getAttribute('data-stato') || 'null') : null;
       return (x && x.ordine && x.ordine.length) ? x : null;
     }catch(e){ return null; }
+  }
+  /* (26/09/2026, richiesta di Mauro) Sopra ogni dashboard, la sua e la corretta, dell'alunno e del docente (dopo la
+     consegna, nei compiti, nel dettaglio del voto, nella Valuta, nell'Archivio), il TESTO dell'esercizio: lo stesso
+     riquadro che si ha davanti compilando, col «–» che lo chiude e il «+» che lo riapre. Chiuso o aperto, resta com'e'
+     passando da una scheda all'altra (cosi' il «tac tac» fra la mia e la corretta non si sposta). */
+  function vcTestoNode(f){
+    var id = f && (f.id || f.testoId);
+    var a = (id && typeof FATTURE !== 'undefined' && FATTURE) ? FATTURE.find(function(y){ return y.id === id; }) : null;
+    if(!a || !a.testo) return null;
+    var d = a.testo.discorsivo;
+    var par = (d && d.manuale && d.manuale.length) ? d.manuale
+            : ((d && d.assistito && d.assistito.length) ? d.assistito : (a.testo.operazione ? [a.testo.operazione] : []));
+    if(!par.length) return null;
+    var box = document.createElement('div'); box.className = 'verifica vc-testo';
+    box.innerHTML = '<div class="verifica-head"><div class="tit"></div><button type="button" class="toggle" title="Nascondi/mostra il testo"></button></div><div class="verifica-body"></div>';
+    box.querySelector('.tit').textContent = a.titolo || 'Testo dell\'esercitazione';
+    var body = box.querySelector('.verifica-body');
+    par.forEach(function(p){ var el = document.createElement('p'); el.className = 'vb-op'; el.textContent = p; body.appendChild(el); });
+    var tg = box.querySelector('.toggle');
+    var metti = function(){ body.classList.toggle('collapsed', !!VC.testoChiuso); tg.textContent = VC.testoChiuso ? '+' : '–'; };
+    tg.addEventListener('click', function(){ VC.testoChiuso = !VC.testoChiuso; metti(); });
+    metti();
+    return box;
   }
   /* La soluzione dell'esercizio presa dall'archivio di adesso, non dalla fotografia della consegna. */
   function soluzioneDi(f){
@@ -8011,6 +8116,8 @@
       ed.classList.add('sol-mode');
       var sb = byId('sol-banner');
       if(sb){ sb.style.cssText = 'display:block; position:sticky; top:0; z-index:60; max-width:1360px; margin:0 auto 16px; padding:10px 0; background:var(--page); border:none; border-radius:0; color:inherit; font-weight:400;'; sb.innerHTML = ''; sb.appendChild(vcBarNode()); }
+      var tx = vcTestoNode(f);   // (26/09/2026) il testo dell'esercizio sopra la dashboard
+      if(tx && sb && sb.parentNode) sb.parentNode.insertBefore(tx, sb.nextSibling);
       show('editor');
       var vb = byId('verifica-bar'); if(vb) vb.style.display = 'none';
     }
@@ -8165,8 +8272,9 @@
     try{ resetEditor(); }catch(e){}       // rimetto l'editor del docente pulito
     return { cort:cort, dash:dash };
   }
-  function apriValutazione(a){
+  function apriValutazione(a, archivioPronto){
     if(!SB){ showAlert('Cloud non disponibile.'); return; }
+    if(!archivioPronto){ archivioDocente(function(){ apriValutazione(a, true); }); return; }   // le corrette vengono dall'archivio
     var assigned = effectiveAssignedList(a.pin);
     if(!assigned.length){ showAlert('Nessun cedolino assegnato a ' + a.cognome + ' ' + a.nome + ': non c\'è nulla da valutare.'); return; }
     // NIENTE filtro su completato=true. Il «Riammetti» RIAPRE le consegne (completato=false) senza cancellarle:
@@ -8684,6 +8792,7 @@
   // Vista SOLUZIONE a confronto (riusa le 4 viste come le vede il docente), con uscita verso la maschera compiti.
   function mostraSoluzioneCompiti(){
     var rec = { cognome:'', fatture:[{
+      testoId: STATE.assegnataId,   // (26/09/2026) solo per il testo dell'esercizio sopra le dashboard
       num: numeroFattura(STATE.assegnataId),
       cortesiaAlunno: STATE.myCortesiaHTML || '',
       cortesiaCorretta: STATE.correctCortesiaHTML || '',
@@ -8857,7 +8966,8 @@
     var esci = byId('btn-esci-menu'); if(esci) esci.textContent = '← Torna ai nomi';
     show('menu-fatture');
   }
-  function apriSoluzioneArchivio(pin, fatturaId){
+  function apriSoluzioneArchivio(pin, fatturaId, archivioPronto){
+    if(!archivioPronto){ archivioDocente(function(){ apriSoluzioneArchivio(pin, fatturaId, true); }); return; }
     var cl = STATE.archivioClasseSel;
     var byPin = ((STATE.archivioClassi || {})[cl] || { byPin:{} }).byPin;
     var s = byPin[pin]; if(!s) return;
@@ -9006,6 +9116,7 @@
         err.textContent = '';
         try{ localStorage.setItem('cf_mail_docente', mail); }catch(e){}   // la ricorda solo questo computer
         try{ sessionStorage.setItem('cf_docente_attivo', '1'); }catch(e){} // dopo un refresh resta nella dashboard
+        cloudAggiornaArchivio(function(){});   // (26/09/2026) ora da docente: l'archivio CON le soluzioni
         renderDocente(); show('docente'); startCollegatiTimer();
       }, function(){ err.textContent = 'Non riesco a verificare i permessi adesso.'; });
     }, function(){ b.disabled = false; err.textContent = 'Non riesco a raggiungere il cloud: controlla la connessione.'; });
@@ -9364,7 +9475,7 @@
       // DOCENTE: dopo un refresh resta nella sua dashboard, ma solo se Supabase lo riconosce ancora.
       if(SB && SB.auth){
         SB.auth.getSession().then(function(r){
-          if(r && r.data && r.data.session){ renderDocente(); show('docente'); startCollegatiTimer(); }
+          if(r && r.data && r.data.session){ archivioDocente(function(){}); renderDocente(); show('docente'); startCollegatiTimer(); }
           else { try{ sessionStorage.removeItem('cf_docente_attivo'); }catch(e){} goGate(); }
         }, function(){ goGate(); });
       } else { goGate(); }
@@ -9466,7 +9577,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260926-03';
+  var VERSIONE_APP = '20260926-04';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
