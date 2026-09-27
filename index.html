@@ -5274,6 +5274,8 @@
     // bandierina e' alzata il salvataggio automatico tace (vedi l'ascoltatore in fondo al file).
     STATE.caricamentoFoglio = true;
     if(STATE.saveTimer){ clearTimeout(STATE.saveTimer); STATE.saveTimer = null; }   // un salvataggio programmato dal foglio di prima non deve scattare su questo
+    // (28/09/2026) Il foglio ricorda se e' un ALLENAMENTO: vedi salvaLavoro.
+    byId('editor').setAttribute('data-allenamento', STATE.esercitazione ? '1' : '0');
     // Rete di sicurezza: la bandierina alzata ha senso solo finche' c'e' il velo sopra il foglio. Se per un
     // qualsiasi imprevisto il velo non c'e', la bandierina si abbassa da sola: il salvataggio non deve MAI restare muto.
     (function sorveglia(){ setTimeout(function(){ if(!STATE.caricamentoFoglio) return; if(!byId('vela-recupero')){ STATE.caricamentoFoglio = false; return; } sorveglia(); }, 1500); })();
@@ -5722,6 +5724,13 @@
       if(!STATE.assegnataId) return;                            // nessun cedolino aperto: non si scrive sotto la chiave «null»
       var ed = byId('editor');
       if(!ed || ed.classList.contains('sol-mode')) return;
+      /* (28/09/2026, trovato da Mauro in PROVA con Alunno Cinque) Il foglio aperto in ALLENAMENTO resta
+         dell'allenamento, e quello vero resta vero. Uscendo dall'allenamento con «Torna ai compiti» il salvataggio
+         automatico scattava 200 ms dopo, quando l'app era gia' tornata normale: il foglio vuoto dell'allenamento
+         veniva scritto come foglio vero del cedolino (telefono e cloud). Il cloud lo rifiutava finche' la consegna
+         era chiusa; dopo il Riammetti l'ha preso, e al rientro ha coperto il lavoro consegnato. */
+      var fAll = ed.getAttribute('data-allenamento');
+      if(fAll !== null && (fAll === '1') !== !!STATE.esercitazione) return;
       commitValues(ed);
       var ora = Date.now();
       var htmlOra = ed.innerHTML;
@@ -9657,7 +9666,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260927-03';
+  var VERSIONE_APP = '20260928-01';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
