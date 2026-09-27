@@ -460,6 +460,10 @@
   .menu-cta .btn-compila{ border:none; background:#3f6b52; color:#fff; border-radius:9px; padding:9px 18px; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; }
   .menu-cta .btn-compila:hover{ background:#1d3c6e; }
   .menu-done{ color:#2f7d54; font-weight:700; font-size:14px; white-space:nowrap; }
+  /* (27/09/2026) esercizio valutato: scritta e pulsanti scendono sotto il titolo, cosi' il titolo non va a capo */
+  .menu-row.valutata{ flex-wrap:wrap; }
+  .menu-row.valutata .menu-cta{ flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; }
+  .menu-row.valutata .menu-cta .btn-ghost{ margin-left:0 !important; }
   .selfx-head{ padding:18px 26px 6px; }
   .selfx-title{ font-weight:800; font-size:17px; color:#3f6b52; }
   .selfx-sub{ font-size:13px; color:var(--muted); margin-top:2px; }
@@ -4793,8 +4797,9 @@
   function buildValutaCell(a){
     var td = document.createElement('td'); td.className = 'valuta-cell'; td.style.textAlign = 'center';
     var st = statoAlunno(a.pin);
-    var giaValutato = !!((CLOUD_STUD[a.pin] || {}).valutazione || {}).voto_finale;
-    if(!st.done && !giaValutato){
+    // (27/09/2026, regola di Mauro) si valuta SOLO un lavoro consegnato: chi e' stato riammesso torna valutabile
+    // quando riconsegna (il voto gia' dato resta nella colonna Voto, col suo interruttore della pubblicazione)
+    if(!st.done){
       var d = document.createElement('span'); d.textContent = '—'; d.style.color = '#b4b2a9';
       d.title = st.assente ? 'Assente: niente da valutare.' : 'Si valuta solo a verifica consegnata (tutti i cedolini assegnati).';
       td.appendChild(d); return td;
@@ -8169,7 +8174,9 @@
       var p = pEl ? vvParse(pEl.value) : NaN, m = mEl ? vvParse(mEl.value) : NaN;
       if(!isNaN(p) && !isNaN(m) && p > m) hasError = true;   // il voto preso non può superare il massimo
       if(!isNaN(p)) totP += p; if(!isNaN(m)){ totM += m; anyM = true; }
-      items.push({ fattura_id:f.id, num:f.num, voto:(pEl && pEl.value.trim() !== '' ? p : null), max:(mEl && mEl.value.trim() !== '' ? m : null), giudizio:(gEl ? gEl.value : '') });
+      // verifica: l'alunno vede il voto in cima ai compiti (verifica) o dentro la riga dell'esercizio (27/09/2026)
+      var fa = (FATTURE || []).find(function(x){ return x.id === f.id; });
+      items.push({ fattura_id:f.id, num:f.num, voto:(pEl && pEl.value.trim() !== '' ? p : null), max:(mEl && mEl.value.trim() !== '' ? m : null), giudizio:(gEl ? gEl.value : ''), verifica:(fa ? !!fa.verifica : null) });
     });
     var perc = anyM && totM > 0 ? (totP / totM * 100) : null;
     if(perc != null && perc > 100) perc = 100;   // la percentuale non supera mai il 100%
@@ -8320,15 +8327,51 @@
     // Il DOCENTE legge la tabella; l'ALUNNO chiede il PROPRIO voto alla porta, che glielo da' solo se
     // e' stato pubblicato (18/09/2026: senza questo, a permessi chiusi, l'alunno non vedeva piu' il voto).
     try{
+      // (27/09/2026) terzo valore: lo STORICO, i voti rimasti dopo i Reset ([{ valutazione, snapshot }], i pubblicati)
       if(sonoDocente()){
-        SB.from('ced_studenti').select('valutazione,valutazione_snapshot').eq('pin', pin).maybeSingle().then(function(res){ var d = (res && res.data) ? res.data : null; cb && cb(d ? d.valutazione : null, d ? d.valutazione_snapshot : null); }, function(){ cb && cb(null, null); });
+        SB.from('ced_studenti').select('valutazione,valutazione_snapshot,valutazioni_storico').eq('pin', pin).maybeSingle().then(function(res){
+          var d = (res && res.data) ? res.data : null;
+          var st = (d && Array.isArray(d.valutazioni_storico)) ? d.valutazioni_storico.filter(function(e){ return e && e.valutazione && e.valutazione.pubblicata && e.valutazione.voto_finale; }) : [];
+          cb && cb(d ? d.valutazione : null, d ? d.valutazione_snapshot : null, st);
+        }, function(){ cb && cb(null, null, []); });
         return;
       }
       SB.rpc('cf_mia_valutazione', { p_pin: pin }).then(function(res){
         var d = (res && !res.error) ? res.data : null;
-        cb && cb(d ? d.valutazione : null, d ? d.snapshot : null);
-      }, function(){ cb && cb(null, null); });
-    }catch(e){ cb && cb(null, null); }
+        cb && cb(d ? d.valutazione : null, d ? d.snapshot : null, (d && Array.isArray(d.storico)) ? d.storico : []);
+      }, function(){ cb && cb(null, null, []); });
+    }catch(e){ cb && cb(null, null, []); }
+  }
+  /* (27/09/2026, regola di Mauro) I VOTI DELL'ALUNNO: quello della prova in corso (se pubblicato) piu' quelli rimasti dopo
+     i Reset (lo storico), in ordine di data. Il voto di una VERIFICA sta in cima alla pagina dei compiti, anche piu' d'uno;
+     quello di un'ESERCITAZIONE sta dentro la riga del suo esercizio: «valutato» e «Vedi soluzione e valutazione». */
+  function votiAlunno(val, snap, storico){
+    var out = [];
+    (storico || []).forEach(function(e){ if(e && e.valutazione && e.valutazione.pubblicata && e.valutazione.voto_finale) out.push({ val:e.valutazione, snap:e.snapshot || null }); });
+    if(val && val.pubblicata && val.voto_finale) out.push({ val:val, snap:snap || null });
+    out.sort(function(a, b){ var x = String(a.val.data || ''), y = String(b.val.data || ''); return x < y ? -1 : (x > y ? 1 : 0); });
+    return out;
+  }
+  // Una voce e' di VERIFICA se lo dice il voto (salvato dal 27/09) o se fra gli esercizi dell'alunno non c'e'
+  // (le verifiche vere non compaiono nei compiti).
+  function voceDiVerifica(it){
+    if(!it) return false;
+    if(it.verifica === true || it.verifica === false) return it.verifica;
+    var f = (FATTURE || []).find(function(x){ return x.id === it.fattura_id; });
+    return !f || !!f.verifica;
+  }
+  function votoDiVerifica(v){ var it = (v && v.items) || []; return !it.length || it.some(voceDiVerifica); }
+  // La riga dell'esercizio valutato: «… · valutato» e il pulsante apre soluzione e valutazione (sul suo cedolino).
+  function segnaValutato(list, id, x, ritorno){
+    var row = null;
+    [].forEach.call(list.querySelectorAll('.menu-row'), function(r){ if(r.getAttribute('data-id') === id) row = r; });
+    if(!row || !row.classList.contains('fatta')) return;   // si vede solo a consegna fatta
+    row.classList.add('valutata');
+    var d = row.querySelector('.menu-done'); if(d && d.textContent.indexOf('valutato') === -1) d.textContent += ' · valutato';
+    var vs = row.querySelector('.vedi-sol'); if(!vs) return;
+    var nuovo = vs.cloneNode(false); nuovo.textContent = 'Vedi soluzione e valutazione';
+    nuovo.addEventListener('click', function(){ apriValutazioneAlunno(x.val, x.snap, ritorno, id); });
+    vs.parentNode.replaceChild(nuovo, vs);
   }
   /* La card del voto pubblicato: voto, data e commento del prof, e al tocco il dettaglio. */
   function cartaValutazione(val, snap, exitFn){
@@ -8373,7 +8416,8 @@
     VAL_TIMER = setInterval(prova, 20000);
   }
   // Vista ALUNNO della propria valutazione (sola lettura), aperta dalla card nella pagina compiti.
-  function apriValutazioneAlunno(val, snap, exitFn){
+  // idFuoco (27/09/2026): aperta dalla riga di un esercizio, la vista parte da quel cedolino
+  function apriValutazioneAlunno(val, snap, exitFn, idFuoco){
     var fatture = (snap && Array.isArray(snap.fatture) && snap.fatture.length)
       ? snap.fatture.map(function(f){ return { id:f.id, num:f.num, nonSvolta:!!f.nonSvolta, cortesiaAlunno:f.cortesiaAlunno || '', cortesiaCorretta:f.cortesiaCorretta || '', dashboardAlunno:f.dashboardAlunno || '', dashboardCorretta:f.dashboardCorretta || '' }; })
       : (val.items || []).map(function(it){ return { id:it.fattura_id, num:it.num, nonSvolta:false, cortesiaAlunno:'', cortesiaCorretta:'', dashboardAlunno:'', dashboardCorretta:'' }; });
@@ -8382,7 +8426,8 @@
        la da' a chi l'ha consegnato, salvo verifica vera): finisce in FATTURE e la vista ridisegna da li' cedolino e
        dashboard corretti. Se il cloud non risponde, si apre lo stesso con quello che c'e'. */
     var apri = function(){
-      mostraViewerCompiti({ pin:(STATE.studente ? STATE.studente.pin : ''), nome:(val.nome || ''), cognome:(STATE.studente ? (STATE.studente.cognome || '') : ''), valutazione:val, cf:0, fatture:fatture }, 'alunno-valuta', exitFn);
+      var cf0 = 0; fatture.forEach(function(f, i){ if(idFuoco && f.id === idFuoco) cf0 = i; });
+      mostraViewerCompiti({ pin:(STATE.studente ? STATE.studente.pin : ''), nome:(val.nome || ''), cognome:(STATE.studente ? (STATE.studente.cognome || '') : ''), valutazione:val, cf:cf0, fatture:fatture }, 'alunno-valuta', exitFn);
       VC.ct = 4; vcGo();
     };
     var ids = fatture.map(function(f){ return f.id; }).filter(Boolean);
@@ -8703,7 +8748,7 @@
       tot++;
       var q = Q[f.id] || {};
       var fatta = !!q.consegnato || done.indexOf(f.id) !== -1; if(fatta) fatti++;
-      var row = document.createElement('div'); row.className = 'menu-row' + (fatta ? ' fatta' : '');
+      var row = document.createElement('div'); row.className = 'menu-row' + (fatta ? ' fatta' : ''); row.setAttribute('data-id', f.id);
       var num = document.createElement('div'); num.className = 'menu-num'; num.textContent = numeroFattura(f.id);
       var info = document.createElement('div'); info.className = 'menu-info';
       var t = document.createElement('div'); t.className = 't'; t.textContent = f.titolo || ('Esercizio ' + numeroFattura(f.id));
@@ -8720,7 +8765,7 @@
       if(fatta){
         s.textContent = f.difficoltaNome ? ('Difficoltà ' + f.difficoltaNome) : '';
         var d = document.createElement('span'); d.className = 'menu-done'; d.textContent = '✓ ' + (q.inClasse ? 'Svolto in classe · consegnato' : 'Consegnato'); cta.appendChild(d);
-        var vs = document.createElement('button'); vs.className = 'btn-ghost'; vs.textContent = 'Vedi soluzione'; vs.style.marginLeft = '8px';
+        var vs = document.createElement('button'); vs.className = 'btn-ghost vedi-sol'; vs.textContent = 'Vedi soluzione'; vs.style.marginLeft = '8px';
         vs.addEventListener('click', function(){ apriSoluzioneCompito(f); }); cta.appendChild(vs);
         // Già consegnato: ora può ALLENARSI liberamente sulla stessa fattura, quante volte vuole. Nessun invio al prof.
         var al = document.createElement('button'); al.className = 'btn-ghost'; al.textContent = 'Allenati'; al.style.marginLeft = '8px';
@@ -8734,13 +8779,21 @@
       row.appendChild(num); row.appendChild(info); row.appendChild(cta); list.appendChild(row);
     });
     byId('menu-sub').textContent = 'Scegli un cedolino, compilalo e consegnalo al prof. Il tuo lavoro si salva da solo e lo ritrovi su qualsiasi dispositivo, anche in classe. Dopo la consegna vedrai (e potrai stampare) la soluzione. Ogni cedolino si consegna una volta sola; poi puoi allenarti quante volte vuoi (senza inviarlo). (Fatti ' + fatti + ' su ' + tot + ')';
-    // Se il docente ha PUBBLICATO la valutazione della verifica, mostra una card in cima (cliccabile).
+    // I voti PUBBLICATI (27/09/2026, regola di Mauro): quelli delle verifiche in cima, uno sotto l'altro in ordine di
+    // data (restano anche dopo il Reset); quelli delle esercitazioni dentro la riga del loro esercizio.
     var pin0 = STATE.studente ? STATE.studente.pin : '';
-    if(pin0){ cloudLeggiValutazione(pin0, function(val, snap){
-      if(!val || !val.pubblicata || !val.voto_finale) return;
+    var giro = STATE.pickerGiro = (STATE.pickerGiro || 0) + 1;   // una lista ridisegnata nel frattempo non riceve i voti due volte
+    if(pin0){ cloudLeggiValutazione(pin0, function(val, snap, storico){
+      if(STATE.pickerGiro !== giro) return;
       if(!byId('menu-fatture') || byId('menu-fatture').style.display === 'none') return;
-      var card = cartaValutazione(val, snap, function(){ renderCompitiPicker(); show('menu-fatture'); });
-      var list = byId('menu-list'); if(list) list.insertBefore(card, list.firstChild);
+      var list = byId('menu-list'); if(!list) return;
+      var ritorno = function(){ renderCompitiPicker(); show('menu-fatture'); };
+      var voti = votiAlunno(val, snap, storico);
+      var primo = list.firstChild;
+      voti.filter(function(x){ return votoDiVerifica(x.val); }).forEach(function(x){ list.insertBefore(cartaValutazione(x.val, x.snap, ritorno), primo); });
+      var perEsercizio = {};   // se un esercizio e' stato valutato piu' volte vale l'ultimo voto
+      voti.forEach(function(x){ (x.val.items || []).forEach(function(it){ if(it && it.fattura_id && !voceDiVerifica(it)) perEsercizio[it.fattura_id] = x; }); });
+      Object.keys(perEsercizio).forEach(function(id){ segnaValutato(list, id, perEsercizio[id], ritorno); });
     }); }
   }
   function apriCompito(f, inClasse){
@@ -9258,7 +9311,7 @@
   byId('btn-reset').addEventListener('click', function(){
     var cl = (CLASSE && CLASSE.classe) || STATE.classeAttiva || '';
     if(!cl){ showAlert('Nessuna classe selezionata da azzerare. Carica o scegli una classe.'); return; }
-    showConfirm('Reset della ' + cl + '?\n\nLA CLASSE RESTA QUI, nella tendina, pronta per la prossima volta.\n\n🛟 Prima preparo un backup di sicurezza di questa classe (con le consegne e i compiti), e ti chiederò di confermare che il file è stato salvato.\n\n• Il cedolino assegnato viene tolto e tutti tornano presenti.\n• ESERCIZI: il lavoro di ognuno resta nei suoi compiti. Chi ha consegnato lo trova «Svolto in classe · consegnato», gli altri «Svolto in classe · da consegnare», col loro lavoro dentro.\n• VERIFICHE: le consegne e i fogli vengono cancellati (restano nel backup). I voti già messi restano.\n\nI compiti a casa e le altre classi non si toccano.', function(){
+    showConfirm('Reset della ' + cl + '?\n\nLA CLASSE RESTA QUI, nella tendina, pronta per la prossima volta.\n\n🛟 Prima preparo un backup di sicurezza di questa classe (con le consegne e i compiti), e ti chiederò di confermare che il file è stato salvato.\n\n• Il cedolino assegnato viene tolto e tutti tornano presenti.\n• ESERCIZI: il lavoro di ognuno resta nei suoi compiti. Chi ha consegnato lo trova «Svolto in classe · consegnato», gli altri «Svolto in classe · da consegnare», col loro lavoro dentro.\n• VERIFICHE: le consegne e i fogli vengono cancellati (restano nel backup).\n• VOTI: spariscono dalla tua dashboard, che riparte pulita. Gli alunni continuano a vedere quelli che hai pubblicato.\n\nI compiti a casa e le altre classi non si toccano.', function(){
       // BACKUP AUTOMATICO DI SICUREZZA prima di cancellare le consegne. Se fallisce, NON resetto (niente perdita di dati).
       backupClasse(function(ok){
         if(!ok){
@@ -9279,12 +9332,14 @@
         // la classe se ne andava e bisognava ricaricare il file. Ora l'azzeramento tocca solo l'esercizio;
         // la classe resta dov'è. Gli alunni, non avendo più niente di assegnato, vedono i compiti da soli.
         STATE.assegnate = []; STATE.assegnataId = null;
+        // (27/09/2026) i voti sono passati nello storico degli alunni: la tabella riparte pulita subito
+        (CLASSE && CLASSE.alunni ? CLASSE.alunni : []).forEach(function(a){ if(CLOUD_STUD[a.pin]){ CLOUD_STUD[a.pin].valutazione = null; CLOUD_STUD[a.pin].valutazione_snapshot = null; } });
         try{
           localStorage.removeItem('cf_assegnata'); localStorage.removeItem('cf_livello'); sessionStorage.removeItem('cf_studente_attivo');
           (CLASSE && CLASSE.alunni ? CLASSE.alunni : []).forEach(function(a){ buttaLavoroAzzerato(a.pin); });
         }catch(e){}
         renderDocente();
-        showAlert('Reset della ' + cl + ' fatto.\n\nGli esercizi sono nei compiti di ognuno: chi li ha consegnati li trova consegnati, gli altri li trovano da consegnare. Le verifiche consegnate vivono SOLO nel file di backup: tienilo da parte finché non hai messo i voti.\n\nLa classe è rimasta qui, con i suoi alunni e i suoi PIN: per la prossima prova ti basta assegnare un altro cedolino. Intanto, col PIN, i ragazzi fanno i compiti.');
+        showAlert('Reset della ' + cl + ' fatto.\n\nGli esercizi sono nei compiti di ognuno: chi li ha consegnati li trova consegnati, gli altri li trovano da consegnare. Le verifiche consegnate vivono SOLO nel file di backup: tienilo da parte.\n\nLa classe è rimasta qui, con i suoi alunni e i suoi PIN: per la prossima prova ti basta assegnare un altro cedolino. Intanto, col PIN, i ragazzi fanno i compiti.');
         });
         }, function(){   // Annulla sulla conferma del backup: non si tocca NIENTE
           showAlert('Azzeramento ANNULLATO: non è stato cancellato niente. Le consegne della ' + cl + ' sono ancora tutte nel cloud.\n\nSe il backup non è stato salvato, controlla le impostazioni di download del browser (o la finestra «Salva con nome» rimasta aperta) e riprova.');
@@ -9602,7 +9657,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260927-02';
+  var VERSIONE_APP = '20260927-03';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
