@@ -1203,6 +1203,7 @@
   var CLASSE = null;
   var FATTURE = [];
   var RUBRICA = [];
+  var TESTO_FINE_ALLENAMENTO = 'Fine e vedi soluzione';   // il pulsante in fondo all'allenamento (27/09/2026: via il trattino lungo)
   var STATE = { assegnataId:null, assegnate:[], mieAssegnate:[], multiMode:false, studente:null, verificaCorrente:null, soluzioneCorrente:null, consegnata:false, myDashboardHTML:null, myCortesiaHTML:null, correctCortesiaHTML:null, correctDashboardHTML:null, attesaTimer:null };
   var PRISTINE_EDITOR = '';
   var ANA_FIELDS = { v:['indirizzo','cap','comune','prov','piva','cf'], c:['indirizzo','cap','comune','prov','piva','cf','pec'] };
@@ -5421,7 +5422,7 @@
       ? 'Sei in <b>allenamento</b> su un cedolino già consegnato: esercitati quanto vuoi, <b>non verrà inviato al prof</b>. A fine compilazione vedrai la soluzione a confronto.'
       : 'Questo è il tuo <b>cedolino</b>, con i valori che hai inserito. Controllalo bene prima di consegnare.');
     byId('btnChiudi').style.display = ''; byId('btnIndietro').style.display = '';
-    byId('btnChiudi').textContent = STATE.esercitazione ? 'Fine — vedi soluzione' : 'Chiudi e consegna';
+    byId('btnChiudi').textContent = STATE.esercitazione ? TESTO_FINE_ALLENAMENTO : 'Chiudi e consegna';
     if(!STATE.modalitaCompiti) cloudPresenza();
     show('editor');
   }
@@ -8836,10 +8837,25 @@
   }
   function fineEsercitazione(){
     showConfirm('Hai finito l\'allenamento? Vedrai la soluzione a confronto con la tua compilazione. Questo esercizio NON viene inviato al prof.', function(){
-      catturaEsercitazione();
-      // Allenamento concluso → la bozza locale riparte pulita al prossimo «Allenati» (resta un allenamento, non un lavoro in sospeso).
-      try{ localStorage.removeItem(chiaveLavoro(STATE.studente.pin, STATE.assegnataId)); }catch(e){}
-      mostraSoluzioneCompiti();
+      /* (27/09/2026, trovato da Mauro) Premendo OK non succedeva niente: dal 18/09 la soluzione non sta piu' nel
+         telefono dell'alunno, catturaEsercitazione trovava STATE.soluzioneCorrente vuota e si fermava in errore
+         (col foglio gia' bloccato). Ora la soluzione si chiede al cloud PRIMA di toccare il foglio, con pazienza
+         (tre tentativi), come fanno «Rivedi la correzione» e Fattura Facile. Se non arriva, il foglio resta com'e'. */
+      var bottone = byId('btnChiudi'); if(bottone) bottone.disabled = true;
+      var id = STATE.assegnataId, tentativi = 0;
+      (function prova(){
+        conSoluzione(id, function(sol){
+          if(!sol && ++tentativi < 3){ setTimeout(prova, 2000); return; }
+          if(bottone) bottone.disabled = false;
+          if(STATE.assegnataId !== id || !STATE.esercitazione) return;   // nel frattempo e' uscito dall'allenamento
+          if(!sol){ showAlert('La soluzione non è arrivata: controlla la connessione e premi di nuovo «' + TESTO_FINE_ALLENAMENTO + '». Il tuo allenamento è ancora qui.'); return; }
+          STATE.soluzioneCorrente = sol;
+          catturaEsercitazione();
+          // Allenamento concluso → la bozza locale riparte pulita al prossimo «Allenati» (resta un allenamento, non un lavoro in sospeso).
+          try{ localStorage.removeItem(chiaveLavoro(STATE.studente.pin, STATE.assegnataId)); }catch(e){}
+          mostraSoluzioneCompiti();
+        });
+      })();
     });
   }
   function ricominciaEsercitazione(){
@@ -9586,7 +9602,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260926-05';
+  var VERSIONE_APP = '20260927-01';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
