@@ -1203,7 +1203,7 @@
   var CLASSE = null;
   var FATTURE = [];
   var RUBRICA = [];
-  var TESTO_FINE_ALLENAMENTO = 'Fine e vedi soluzione';   // il pulsante in fondo all'allenamento (27/09/2026: via il trattino lungo)
+  var TESTO_FINE_ALLENAMENTO = 'Fine - vedi soluzione';   // il pulsante in fondo all'allenamento (27/09/2026: trattino corto; «Fine» resta perche' dopo l'OK il foglio si blocca e non si continua)
   var STATE = { assegnataId:null, assegnate:[], mieAssegnate:[], multiMode:false, studente:null, verificaCorrente:null, soluzioneCorrente:null, consegnata:false, myDashboardHTML:null, myCortesiaHTML:null, correctCortesiaHTML:null, correctDashboardHTML:null, attesaTimer:null };
   var PRISTINE_EDITOR = '';
   var ANA_FIELDS = { v:['indirizzo','cap','comune','prov','piva','cf'], c:['indirizzo','cap','comune','prov','piva','cf','pec'] };
@@ -9602,7 +9602,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260927-01';
+  var VERSIONE_APP = '20260927-02';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
