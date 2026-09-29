@@ -1822,7 +1822,7 @@
   // Reset si rientra solo col PIN (niente rientro automatico entro mezz'ora).
   function nuovoAzzeramento(){ return new Date().toISOString() + '-' + Math.random().toString(36).slice(2, 8); }
   // (24/09/2026, regole nuove) Il Reset chiude la PROVA e lascia nel quaderno di ogni alunno il lavoro degli ESERCIZI:
-  // chi ha consegnato lui trova «Svolto in classe · consegnato», gli altri «Iniziato in classe · da consegnare» col
+  // chi ha consegnato lui trova «Svolto in classe · consegnato», gli altri «Svolto in classe · da consegnare» col
   // loro lavoro dentro. Le VERIFICHE spariscono (sono nel backup), restano i voti. Tutti tornano presenti.
   // Lo fa tutto la porta cf_reset_classe sul server, in un colpo solo. cb(ok, errore).
   function cloudResetClasse(classe, cb){
@@ -2309,7 +2309,7 @@
     ov.querySelector('.modal-btn-ok').addEventListener('click', function(){
       closeModal(ov); STATE.assModaleAperta = false;
       // Accetta: adotta la nuova assegnazione. (24/09/2026) Il lavoro dei cedolini tolti NON si butta piu': e' il suo
-      // foglio, resta nel cloud e nei compiti lo ritrova «Iniziato in classe · da consegnare».
+      // foglio, resta nel cloud e nei compiti lo ritrova «Svolto in classe · da consegnare».
       rimosse.forEach(function(x){ rimuoviIniziata(pin, x.id); rimuoviConsegnataLocale(pin, x.id); });
       STATE.mieAssegnate = nuova; STATE.multiMode = nuova.length > 1;
       if(staCompilandoRimossa){
@@ -8833,13 +8833,11 @@
       var info = document.createElement('div'); info.className = 'menu-info';
       var t = document.createElement('div'); t.className = 't'; t.textContent = f.titolo || ('Esercizio ' + numeroFattura(f.id));
       var s = document.createElement('div'); s.className = 's'; s.textContent = f.difficoltaNome ? ('Difficoltà ' + f.difficoltaNome) : 'Cedolino da compilare';
-      // (24/09/2026) i nomi approvati da Mauro: «In corso in classe», «Iniziato in classe · da consegnare»
-      // (fino al 29/09/2026 «Svolto in classe»: un cedolino si puo' chiudere anche a meta', col Reset o con la
-      // consegna forzata, e il ragazzo lo finisce a casa),
+      // (24/09/2026) i nomi approvati da Mauro: «In corso in classe», «Svolto in classe · da consegnare»,
       // «Svolto in classe · consegnato», «Da fare», «Consegnato»
       var daConsegnare = !fatta && (q.forzata || (!q.assegnato && (q.bozzaClasse || q.riaperto)));
       var inCorsoClasse = !fatta && !daConsegnare && q.assegnato;
-      if(daConsegnare){ s.textContent = 'Iniziato in classe · da consegnare'; s.style.fontWeight = '600'; s.style.color = '#8a5a12'; }
+      if(daConsegnare){ s.textContent = 'Svolto in classe · da consegnare'; s.style.fontWeight = '600'; s.style.color = '#8a5a12'; }
       else if(inCorsoClasse){ s.textContent = 'In corso in classe'; s.style.fontWeight = '600'; s.style.color = '#3f6b52'; }
       else if(!fatta){ s.textContent = 'Da fare' + (f.difficoltaNome ? (' · difficoltà ' + f.difficoltaNome) : ''); }
       info.appendChild(t); info.appendChild(s);
@@ -9393,7 +9391,7 @@
   byId('btn-reset').addEventListener('click', function(){
     var cl = (CLASSE && CLASSE.classe) || STATE.classeAttiva || '';
     if(!cl){ showAlert('Nessuna classe selezionata da azzerare. Carica o scegli una classe.'); return; }
-    showConfirm('Reset della ' + cl + '?\n\nLA CLASSE RESTA QUI, nella tendina, pronta per la prossima volta.\n\n🛟 Prima preparo un backup di sicurezza di questa classe (con le consegne e i compiti), e ti chiederò di confermare che il file è stato salvato.\n\n• Il cedolino assegnato viene tolto e tutti tornano presenti.\n• ESERCIZI: il lavoro di ognuno resta nei suoi compiti. Chi ha consegnato lo trova «Svolto in classe · consegnato», gli altri «Iniziato in classe · da consegnare», col loro lavoro dentro.\n• VERIFICHE: le consegne e i fogli vengono cancellati (restano nel backup).\n• VOTI: spariscono dalla tua dashboard, che riparte pulita. Gli alunni continuano a vedere quelli che hai pubblicato.\n\nI compiti a casa e le altre classi non si toccano.', function(){
+    showConfirm('Reset della ' + cl + '?\n\nLA CLASSE RESTA QUI, nella tendina, pronta per la prossima volta.\n\n🛟 Prima preparo un backup di sicurezza di questa classe (con le consegne e i compiti), e ti chiederò di confermare che il file è stato salvato.\n\n• Il cedolino assegnato viene tolto e tutti tornano presenti.\n• ESERCIZI: il lavoro di ognuno resta nei suoi compiti. Chi ha consegnato lo trova «Svolto in classe · consegnato», gli altri «Svolto in classe · da consegnare», col loro lavoro dentro.\n• VERIFICHE: le consegne e i fogli vengono cancellati (restano nel backup).\n• VOTI: spariscono dalla tua dashboard, che riparte pulita. Gli alunni continuano a vedere quelli che hai pubblicato.\n\nI compiti a casa e le altre classi non si toccano.', function(){
       // BACKUP AUTOMATICO DI SICUREZZA prima di cancellare le consegne. Se fallisce, NON resetto (niente perdita di dati).
       backupClasse(function(ok){
         if(!ok){
@@ -9739,7 +9737,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20260929-02';
+  var VERSIONE_APP = '20260929-03';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
