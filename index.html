@@ -3531,6 +3531,10 @@
   }
   function refreshPallini(){
     if(!SB || !(typeof CLASSE !== 'undefined' && CLASSE && CLASSE.classe)){ disegnaPallini(); return; }
+    /* (25/10/2026) Se nella classe aperta nessuno e' collegato e al lavoro, nessun pallino si puo' accendere: pallinoAcceso
+       vuole attaccatoAllApp anche sulla riga del giro dei 4 secondi (CLOUD_STUD). Allora la lettura al secondo non serve
+       e non si fa; appena il giro vede qualcuno collegato si riparte. Per i limiti dei registri di Supabase. */
+    if(STATE.cloudStudCaricato && !Object.keys(CLOUD_STUD).some(function(p){ var s = CLOUD_STUD[p]; return s && s.classe === CLASSE.classe && attaccatoAllApp(s) && statoAlunno(p).on; })){ disegnaPallini(); return; }
     if(STATE.pallinoInVolo && (Date.now() - STATE.pallinoInVolo) < 4000){ disegnaPallini(); return; }
     STATE.pallinoInVolo = Date.now();
     try{
@@ -8950,15 +8954,22 @@
   function startCompitiWatcher(){
     stopCompitiWatcher();
     if(!SB) return;
+    /* (25/10/2026) Il cedolino (e il Reset) li da' solo il docente dal cruscotto, che finche' e' aperto rinnova il suo
+       battito (docente_heartbeat). Si controlla ogni 5 secondi se quel battito e' cambiato negli ultimi 2 minuti (o
+       si e' appena entrati), altrimenti ogni 30: la sera, a cruscotto chiuso, i compiti pesano 6 volte meno sui
+       registri di Supabase. Si guarda se il battito CAMBIA, non l'ora: gli orologi dei telefoni sbagliano. */
+    STATE.compitiHbVisto = undefined; STATE.compitiHbCambiato = Date.now(); STATE.compitiUltimo = 0;
     STATE.compitiTimer = setInterval(function(){
       if(!STATE.studente || !STATE.modalitaCompiti){ stopCompitiWatcher(); return; }
+      if((Date.now() - STATE.compitiHbCambiato) > 120000 && (Date.now() - STATE.compitiUltimo) < 30000) return;
       if(STATE.compitiStatoInVolo && (Date.now() - STATE.compitiStatoInVolo) < 8000) return;
-      STATE.compitiStatoInVolo = Date.now();
+      STATE.compitiStatoInVolo = Date.now(); STATE.compitiUltimo = STATE.compitiStatoInVolo;
       var pin = STATE.studente.pin;
       SB.rpc('cf_stato', { p_pin: pin }).then(function(r){
         STATE.compitiStatoInVolo = 0;
         var d = (r && !r.error) ? r.data : null;
         if(!d || !STATE.studente || STATE.studente.pin !== pin || !STATE.modalitaCompiti) return;
+        if(d.docente_heartbeat !== STATE.compitiHbVisto){ if(STATE.compitiHbVisto !== undefined) STATE.compitiHbCambiato = Date.now(); STATE.compitiHbVisto = d.docente_heartbeat; }
         // Reset del docente mentre l'alunno e' nei compiti: come in classe e sul consegnato, via le copie di questo
         // dispositivo e schermata del PIN (25/09/2026). Prima qui si segnava il contrassegno nuovo SENZA buttare
         // niente: il dispositivo si credeva in regola, rientrava senza PIN e rimetteva nel cloud i fogli vecchi.
@@ -9952,7 +9963,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20261025-02';
+  var VERSIONE_APP = '20261025-03';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
