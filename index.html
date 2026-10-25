@@ -196,6 +196,21 @@
   .vb-op.vb-punto{margin:0 0 5px; padding-left:18px; position:relative;}
   .vb-op.vb-punto::before{content:''; position:absolute; left:5px; top:.68em; width:5px; height:5px; border-radius:50%; background:#5c8b73;}
   .vb-op b{font-weight:600;}
+  /* (25/10/2026) pulsante di lettura: il testo letto ad alta voce per i DSA (vedi lettoreNodo) */
+  .lettura{display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:10px 18px; background:#fff; border-bottom:1px solid #cfdfd5;}
+  .lettura .lt-ico{display:inline-flex; color:#3f6b52;}
+  .lettura .lt-ico svg{width:20px; height:20px;}
+  .lettura button{display:inline-flex; align-items:center; justify-content:center; gap:7px; height:34px; padding:0 14px; border-radius:8px; border:1px solid var(--line2); background:#fff; color:#3f6b52; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer;}
+  .lettura button svg{width:15px; height:15px; flex:none;}
+  .lettura .lt-play{min-width:164px; background:#3f6b52; border-color:#3f6b52; color:#fff;}
+  .lettura .lt-play:hover{background:#355c46;}
+  .lettura .lt-indietro:hover{background:#e9f1ec;}
+  .lettura button:disabled{opacity:.45; cursor:default; background:#fff;}
+  .lettura input.lt-barra{flex:1 1 160px; min-width:120px; width:auto; height:22px; margin:0; padding:0; border:none; border-radius:0; background:transparent; box-shadow:none; accent-color:#3f6b52; cursor:pointer;}
+  .lettura input.lt-barra:disabled{cursor:default; opacity:.5;}
+  .lettura .lt-tempo{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .modal-card > .lettura{margin:8px 26px 0; border:1px solid #cfdfd5; border-radius:10px; background:#fbfdff;}
+  @media print{ .lettura{display:none !important;} }
   .vb-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;}
   .vb-card{border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#fff;}
   .vb-card h4{margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);}
@@ -1018,6 +1033,7 @@
       <div class="tit" id="ver-tit">Testo dell'esercitazione</div>
       <button class="toggle" id="ver-toggle" title="Nascondi/mostra il testo">–</button>
     </div>
+    <div id="ver-lettura" style="display:none;"></div>
     <div class="verifica-body" id="ver-body"></div>
   </div>
 </div>
@@ -3817,7 +3833,7 @@
     ov.querySelector('.modal-btn-ok').focus();
   }
   /* Anteprima SOLO lettura del testo di una fattura (pulsante 👁): niente "Assegna", solo "Chiudi". */
-  function showAnteprima(titolo, testo){
+  function showAnteprima(titolo, testo, idLettura){
     var ov = document.createElement('div'); ov.className = 'modal-overlay';
     ov.innerHTML = '<div class="modal-card" style="max-width:640px;">' +
       '<div class="prev-title" style="padding:18px 26px 4px; font-weight:800; font-size:16px; color:#3f6b52;"></div>' +
@@ -3830,6 +3846,7 @@
     var corpo = ov.querySelector('.modal-body');
     corpo.style.whiteSpace = 'normal';
     corpo.innerHTML = String(testo == null ? '' : testo).split('\n\n').map(testoRicco).join('');
+    if(idLettura) corpo.parentNode.insertBefore(lettoreNodo(idLettura), corpo);   // (25/10/2026) la voce, come la sente l'alunno
     ov.querySelector('.modal-btn-ok').addEventListener('click', function(){ closeModal(ov); });
     document.body.appendChild(ov);
     ov.querySelector('.modal-btn-ok').focus();
@@ -3864,7 +3881,7 @@
           '<button type="button" class="selfx-eye" title="Anteprima del testo">👁</button>';
         row.querySelector('.selfx-name').textContent = f.titolo;
         row.querySelector('.selfx-liv').value = String(liv);
-        row.querySelector('.selfx-eye').addEventListener('click', function(){ showAnteprima(f.titolo, previewTesto(f)); });
+        row.querySelector('.selfx-eye').addEventListener('click', function(){ showAnteprima(f.titolo, previewTesto(f), f.testo && f.testo.lettura); });
         var chk = row.querySelector('input');
         chk.addEventListener('change', function(){
           var n = body.querySelectorAll('input[type=checkbox]:checked').length;
@@ -4357,9 +4374,99 @@
     s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
     return '<p class="' + cls + '">' + s + '</p>';
   }
+  /* (25/10/2026) PULSANTE DI LETTURA, chiesto da Mauro per i DSA: il testo dell'esercizio letto ad alta voce, con la
+     voce Google it-it-training-8 registrata una volta per esercizio (nell'archivio l'esercizio ha «lettura»: true).
+     L'audio sta nel cloud (ced_letture) e lo consegna solo cf_lettura, con la regola degli esercizi: una verifica
+     arriva solo a chi ce l'ha assegnata (o al docente). Si scarica al primo «Ascolta il testo», non prima.
+     Avvio e pausa, barra per spostarsi, «10 s» per tornare indietro e riascoltare. Il lettore sta FUORI da #editor:
+     non entra nel lavoro salvato ne' nella consegna. Se il riquadro sparisce (consegna, uscita, anteprima chiusa)
+     la voce si ferma da sola. */
+  var LETTURE = {};   // id dell'esercizio -> indirizzo dell'audio gia' scaricato
+  var LT_SILENZIO = 'data:audio/mpeg;base64,/+MYxAAAAANIAAAAAExBTUUzLjEwMSAoYmV0YSAzKVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxDsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxHYAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxLEAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';   // un decimo di secondo muto (vedi il primo tocco)
+  var LT_ICO = {
+    cuffie: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm11 0a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2z"/><path d="M4 15v-3a8 8 0 0 1 16 0v3"/></svg>',
+    avvia: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4v16a1 1 0 0 0 1.524.852l13-8a1 1 0 0 0 0-1.704l-13-8A1 1 0 0 0 6 4"/></svg>',
+    pausa: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2m8 0h-2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>',
+    indietro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9a9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'
+  };
+  function letturaTempo(s){ s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  function lettoreNodo(id){
+    var box = document.createElement('div'); box.className = 'lettura'; box.setAttribute('data-id', id);
+    box.innerHTML = '<span class="lt-ico">' + LT_ICO.cuffie + '</span>' +
+      '<button type="button" class="lt-play"></button>' +
+      '<button type="button" class="lt-indietro" title="Torna indietro di 10 secondi" disabled>' + LT_ICO.indietro + '<span>10 s</span></button>' +
+      '<input type="range" class="lt-barra" min="0" max="1000" step="1" value="0" disabled aria-label="Punto della lettura">' +
+      '<span class="lt-tempo"></span>';
+    var bPlay = box.querySelector('.lt-play'), bInd = box.querySelector('.lt-indietro'),
+        barra = box.querySelector('.lt-barra'), tempo = box.querySelector('.lt-tempo');
+    var au = null, pronto = false, caricando = false, trascina = false, guasto = false;
+    function visibile(){ return box.isConnected && box.offsetParent !== null; }
+    function durata(){ return (pronto && isFinite(au.duration) && au.duration > 0) ? au.duration : 0; }
+    function metti(){
+      var suona = pronto && !au.paused;
+      var scritta = caricando ? 'Carico la voce…' : suona ? 'Pausa' : (pronto && au.ended) ? 'Ascolta di nuovo'
+                  : (pronto && au.currentTime > 0) ? 'Riprendi' : 'Ascolta il testo';
+      bPlay.innerHTML = (suona ? LT_ICO.pausa : LT_ICO.avvia) + '<span>' + scritta + '</span>';
+      var d = durata();
+      bInd.disabled = barra.disabled = !d;
+      if(d){
+        if(!trascina) barra.value = Math.round(au.currentTime / d * 1000);
+        tempo.textContent = letturaTempo(trascina ? barra.value / 1000 * d : au.currentTime) + ' / ' + letturaTempo(d);
+      } else tempo.textContent = guasto ? 'Voce non arrivata: riprova' : '';
+    }
+    function scarica(cb){
+      if(LETTURE[id]){ cb(LETTURE[id]); return; }
+      if(!SB){ guasto = true; metti(); return; }
+      caricando = true; guasto = false; metti();
+      SB.rpc('cf_lettura', { p_pin: pinPerEsercizi(), p_id: id }).then(function(res){
+        caricando = false;
+        var d = res && res.data;
+        try{
+          var bin = atob(d.audio), arr = new Uint8Array(bin.length);
+          for(var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          LETTURE[id] = URL.createObjectURL(new Blob([arr], { type: d.tipo || 'audio/mpeg' }));
+        }catch(e){ guasto = true; metti(); return; }
+        cb(LETTURE[id]);
+      }, function(){ caricando = false; guasto = true; metti(); });
+    }
+    bPlay.addEventListener('click', function(){
+      if(caricando) return;
+      if(pronto){ if(au.paused){ var p0 = au.play(); if(p0 && p0.catch) p0.catch(function(){ metti(); }); } else { au.pause(); metti(); } return; }
+      if(!au){
+        au = new Audio(); au.preload = 'auto';
+        au.addEventListener('timeupdate', function(){ if(pronto && !visibile()) au.pause(); metti(); });
+        ['play', 'pause', 'ended', 'loadedmetadata', 'durationchange'].forEach(function(ev){ au.addEventListener(ev, metti); });
+      }
+      // Primo tocco: si fa suonare il muto DENTRO il tocco, cosi' i telefoni che vogliono un tocco per suonare
+      // lasciano partire anche la voce vera, che arriva dopo dal cloud.
+      try{ au.src = LT_SILENZIO; var p1 = au.play(); if(p1 && p1.catch) p1.catch(function(){}); }catch(e){}
+      scarica(function(url){
+        au.src = url; pronto = true;
+        if(visibile()){ var p2 = au.play(); if(p2 && p2.catch) p2.catch(function(){ metti(); }); }
+        metti();
+      });
+    });
+    barra.addEventListener('input', function(){ trascina = true; metti(); });
+    barra.addEventListener('change', function(){ trascina = false; var d = durata(); if(d) au.currentTime = barra.value / 1000 * d; metti(); });
+    bInd.addEventListener('click', function(){ if(durata()){ au.currentTime = Math.max(0, au.currentTime - 10); metti(); } });
+    box._ferma = function(){ if(au){ try{ au.pause(); }catch(e){} } };
+    metti();
+    return box;
+  }
+  // Nel riquadro del testo dell'alunno: il lettore se l'esercizio ha la lettura, niente se non ce l'ha.
+  function letturaMostra(id){
+    var c = byId('ver-lettura'); if(!c) return;
+    var prima = c.firstChild;
+    if(prima && id && prima.getAttribute('data-id') === id) return;   // stesso esercizio ridisegnato: la voce non si interrompe
+    if(prima && prima._ferma) prima._ferma();
+    c.innerHTML = '';
+    if(id) c.appendChild(lettoreNodo(id));
+    c.style.display = id ? '' : 'none';
+  }
   function riga(l, v){ return v ? ('<div>' + (l?'<span style="color:var(--muted)">'+l+'</span> ':'') + esc(v) + '</div>') : ''; }
   function renderVerifica(titolo, v){
     byId('ver-tit').textContent = titolo || 'Testo dell\'esercitazione';
+    letturaMostra(v && v.lettura);   // (25/10/2026) pulsante di lettura
     // Livello Manuale: testo DISCORSIVO (prosa) con anagrafiche, senza codici.
     if(v.discorsivo && v.discorsivo.manuale && v.discorsivo.manuale.length){
       var hp = ''; v.discorsivo.manuale.forEach(function(p){ hp += testoRicco(p); });
@@ -4697,7 +4804,7 @@
     if(fx.tipo === 'cedolino'){
       return { id:fx.id, numero:numeroDaArchivio(fx), titolo:titoloDaArchivio(fx), difficolta:fx.difficolta,
                tipo:'cedolino', consegna:(fx.consegna || ''), verifica:!!fx.verifica,
-               testo:{ operazione:(fx.consegna || ''), discorsivo:{ manuale:(fx.testo && fx.testo.paragrafi) || [] } },
+               testo:{ operazione:(fx.consegna || ''), discorsivo:{ manuale:(fx.testo && fx.testo.paragrafi) || [] }, lettura:(fx.lettura ? fx.id : null) },
                soluzione:(fx.soluzione || null) };
     }
     var tw = fx.testo||{}, sol = fx.soluzione||{}, ta = sol.totaliAttesi||{};
@@ -9845,7 +9952,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20261025-01';
+  var VERSIONE_APP = '20261025-02';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
