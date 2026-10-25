@@ -190,6 +190,12 @@
   .verifica-body{padding:18px 22px; font-size:14px; line-height:1.6;}
   .verifica-body.collapsed{display:none;}
   .vb-op{margin:0 0 12px;}
+  /* (25/10/2026) testo a punti dei cedolini di verifica per DSA e obiettivi minimi (vedi testoRicco) */
+  .vb-op.vb-tit{margin:16px 0 6px; font-weight:600; color:#3f6b52;}
+  .vb-op.vb-tit:first-child{margin-top:0;}
+  .vb-op.vb-punto{margin:0 0 5px; padding-left:18px; position:relative;}
+  .vb-op.vb-punto::before{content:''; position:absolute; left:5px; top:.68em; width:5px; height:5px; border-radius:50%; background:#5c8b73;}
+  .vb-op b{font-weight:600;}
   .vb-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;}
   .vb-card{border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#fff;}
   .vb-card h4{margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);}
@@ -2893,7 +2899,8 @@
       // compilando: «–» lo chiude, «+» lo riapre, e resta com'e' passando da una scheda o da un alunno all'altro
       + 'var TXC=false;'
       + 'var TT=(' + espTacTac.toString() + ')();'   // (28/09/2026) il «tac tac», stesse regole dell'app
-      + 'function TX(f){var p=f.traccia||[];if(!p.length)return "";var h=\'<div class="verifica"><div class="verifica-head"><div class="tit">\'+E(f.tracciaTitolo||"Testo dell\'esercitazione")+\'</div><button type="button" class="toggle" title="Nascondi/mostra il testo">\'+(TXC?"+":"–")+\'</button></div><div class="verifica-body\'+(TXC?" collapsed":"")+\'">\';for(var i=0;i<p.length;i++){h+=\'<p class="vb-op">\'+E(p[i])+\'</p>\';}return h+\'</div></div>\';}'
+      + 'var RT=' + testoRicco.toString() + ';'       // (25/10/2026) testo a punti, come nell'app
+      + 'function TX(f){var p=f.traccia||[];if(!p.length)return "";var h=\'<div class="verifica"><div class="verifica-head"><div class="tit">\'+E(f.tracciaTitolo||"Testo dell\'esercitazione")+\'</div><button type="button" class="toggle" title="Nascondi/mostra il testo">\'+(TXC?"+":"–")+\'</button></div><div class="verifica-body\'+(TXC?" collapsed":"")+\'">\';for(var i=0;i<p.length;i++){h+=RT(p[i]);}return h+\'</div></div>\';}'
       + 'function VALHTML(d){var v=d.val;if(!v)return "";var perc=(v.perc!=null?Math.round(v.perc)+"%":"—");var tot=(v.max_tot?(v.totale+" / "+v.max_tot):"— / —");var voto=(v.voto_finale||"—");var s=\'<div class="val-sum"><div class="vc"><div class="vl">Totale</div><div class="vv">\'+E(tot)+\'</div></div><div class="vc"><div class="vl">Percentuale</div><div class="vv">\'+E(perc)+\'</div></div><div class="vc"><div class="vl">Voto finale</div><div class="vv vbig">\'+E(voto)+\'</div></div></div>\';var items=v.items||[];for(var i=0;i<items.length;i++){var it=items[i];var vt=(it.voto!=null?it.voto:"—");var mx=(it.max!=null?it.max:"—");s+=\'<div class="val-row"><div class="val-l"><div class="val-fh">Cedolino \'+E(it.num)+\'</div><div class="val-score">\'+E(vt)+\' <span style="color:#8a94a6">/ \'+E(mx)+\'</span></div></div><div class="val-g">\'+(it.giudizio?E(it.giudizio):\'<span style="color:#8a94a6">Nessun commento.</span>\')+\'</div></div>\';}return s;}'
       + 'function over(){var HASVOTO=DATA.some(function(x){return x.voto;});var vh=HASVOTO?\'<th style="width:90px;text-align:center">Voto</th>\':"";var h=\'<table class="exp-tbl"><thead><tr><th style="width:130px">PIN</th><th>Studente</th><th style="width:210px">Esercizi consegnati</th>\'+vh+\'</tr></thead><tbody>\';for(var i=0;i<DATA.length;i++){var d=DATA[i];var c=ACOL(d.pin);var vcls=(d.perc!=null&&d.perc>=59.1)?"votopill vp-ok":"votopill vp-no";var vc=HASVOTO?(\'<td style="text-align:center">\'+(d.voto?(\'<span class="\'+vcls+\'">\'+E(d.voto)+\'</span>\'):"—")+\'</td>\'):"";h+=\'<tr data-i="\'+i+\'"><td class="pinc">\'+E(d.pin)+\'</td><td><span class="ava" style="background:\'+c[0]+\';color:\'+c[1]+\'">\'+E(INITS(d.nome))+\'</span><span class="stud">\'+E(d.nome)+\'</span></td><td class="numc">\'+E(d.nums)+\'</td>\'+vc+\'</tr>\';}h+=\'</tbody></table>\';var ov=document.getElementById("exp-over");ov.innerHTML=h;ov.style.display="";document.getElementById("exp-det").style.display="none";var tr=ov.querySelectorAll("tbody tr");for(var k=0;k<tr.length;k++){tr[k].onclick=function(){det(this.getAttribute("data-i"));};}}'
       + 'function det(i){var d=DATA[i];var cogn=(d.cognome||((d.nome||"").split(" ")[0])||"");document.getElementById("exp-over").style.display="none";var el=document.getElementById("exp-det");el.style.display="";'
@@ -3065,6 +3072,11 @@
       + '.pdf-traccia{background:#f7f9fc;border:1px solid #e3ebf5;border-radius:10px;padding:8px 14px;margin-bottom:9px;}'
       + '.pdf-traccia p{margin:0 0 3px;font-size:10px;line-height:1.28;color:#3a475c;}'
       + '.pdf-traccia p:last-child{margin-bottom:0;}'
+      + '.pdf-traccia p.vb-tit{margin:5px 0 2px;font-weight:600;color:#3f6b52;}'
+      + '.pdf-traccia p.vb-tit:first-of-type{margin-top:0;}'
+      + '.pdf-traccia p.vb-punto{margin:0 0 1px;padding-left:10px;position:relative;}'
+      + '.pdf-traccia p.vb-punto::before{content:"";position:absolute;left:2px;top:.5em;width:4px;height:4px;border-radius:50%;background:#5c8b73;}'
+      + '.pdf-traccia b{font-weight:600;}'
       + '.pdf-mini{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#5b6b82;margin:0 0 4px;}'
       + '.pdf-mini.alu{color:#5c8b73;margin:2px 0 5px;}'
       + '.pdf-val-top{display:flex;gap:12px;background:#eef3fb;border:1px solid #cddcf0;border-radius:12px;padding:14px 16px;margin-bottom:12px;}'
@@ -3086,7 +3098,7 @@
         var tracciaHtml = '';
         if(f.traccia && f.traccia.length){
           tracciaHtml = '<div class="pdf-traccia"><div class="pdf-mini">Testo dell\'esercizio</div>';
-          f.traccia.forEach(function(p){ tracciaHtml += '<p>' + esc(p) + '</p>'; });
+          f.traccia.forEach(function(p){ tracciaHtml += testoRicco(p); });
           tracciaHtml += '</div>';
         }
         var contenuto = tracciaHtml
@@ -3814,7 +3826,10 @@
         '<button type="button" class="modal-btn modal-btn-ok">Chiudi</button>' +
       '</div></div>';
     ov.querySelector('.prev-title').textContent = titolo;
-    ov.querySelector('.modal-body').textContent = testo;
+    // (25/10/2026) paragrafi disegnati come li vede l'alunno: il testo a punti con titoli e neretti
+    var corpo = ov.querySelector('.modal-body');
+    corpo.style.whiteSpace = 'normal';
+    corpo.innerHTML = String(testo == null ? '' : testo).split('\n\n').map(testoRicco).join('');
     ov.querySelector('.modal-btn-ok').addEventListener('click', function(){ closeModal(ov); });
     document.body.appendChild(ov);
     ov.querySelector('.modal-btn-ok').focus();
@@ -4329,12 +4344,25 @@
   }
 
   /* ---------- Testo dell'esercitazione (richiudibile) ---------- */
+  /* (25/10/2026) TESTO A PUNTI, chiesto da Mauro per i cedolini di verifica dei DSA e degli obiettivi minimi: un
+     paragrafo che comincia con «## » e' un titolo di sezione, uno che comincia con «- » e' un punto dell'elenco,
+     **parola** va in neretto. Prima si toglie ogni codice (come esc), poi si mettono i pochi segni nostri: dal testo
+     non puo' entrare altro. I testi in prosa non hanno questi segni e restano come prima. Funzione autonoma (niente
+     esc): il suo sorgente finisce anche nell'HTML esportato (RT). */
+  function testoRicco(p){
+    var s = String(p == null ? '' : p), cls = 'vb-op';
+    if(s.indexOf('## ') === 0){ s = s.slice(3); cls += ' vb-tit'; }
+    else if(s.indexOf('- ') === 0){ s = s.slice(2); cls += ' vb-punto'; }
+    s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    return '<p class="' + cls + '">' + s + '</p>';
+  }
   function riga(l, v){ return v ? ('<div>' + (l?'<span style="color:var(--muted)">'+l+'</span> ':'') + esc(v) + '</div>') : ''; }
   function renderVerifica(titolo, v){
     byId('ver-tit').textContent = titolo || 'Testo dell\'esercitazione';
     // Livello Manuale: testo DISCORSIVO (prosa) con anagrafiche, senza codici.
     if(v.discorsivo && v.discorsivo.manuale && v.discorsivo.manuale.length){
-      var hp = ''; v.discorsivo.manuale.forEach(function(p){ hp += '<p class="vb-op">' + esc(p) + '</p>'; });
+      var hp = ''; v.discorsivo.manuale.forEach(function(p){ hp += testoRicco(p); });
       byId('ver-body').innerHTML = hp;
       byId('ver-body').classList.remove('collapsed'); byId('ver-toggle').textContent = '–';
       return;
@@ -4359,7 +4387,7 @@
     byId('ver-tit').textContent = titolo || 'Testo dell\'esercitazione';
     // Livelli Guidata/Automatica: testo DISCORSIVO (prosa), solo nomi, senza codici né anagrafiche complete.
     if(v.discorsivo && v.discorsivo.assistito && v.discorsivo.assistito.length){
-      var hp = ''; v.discorsivo.assistito.forEach(function(p){ hp += '<p class="vb-op">' + esc(p) + '</p>'; });
+      var hp = ''; v.discorsivo.assistito.forEach(function(p){ hp += testoRicco(p); });
       byId('ver-body').innerHTML = hp;
       byId('ver-body').classList.remove('collapsed'); byId('ver-toggle').textContent = '–';
       return;
@@ -8151,7 +8179,7 @@
     box.innerHTML = '<div class="verifica-head"><div class="tit"></div><button type="button" class="toggle" title="Nascondi/mostra il testo"></button></div><div class="verifica-body"></div>';
     box.querySelector('.tit').textContent = a.titolo || 'Testo dell\'esercitazione';
     var body = box.querySelector('.verifica-body');
-    par.forEach(function(p){ var el = document.createElement('p'); el.className = 'vb-op'; el.textContent = p; body.appendChild(el); });
+    par.forEach(function(p){ body.insertAdjacentHTML('beforeend', testoRicco(p)); });
     var tg = box.querySelector('.toggle');
     var metti = function(){ body.classList.toggle('collapsed', !!VC.testoChiuso); tg.textContent = VC.testoChiuso ? '+' : '–'; };
     tg.addEventListener('click', function(){ VC.testoChiuso = !VC.testoChiuso; metti(); });
@@ -9817,7 +9845,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20261020-01';
+  var VERSIONE_APP = '20261025-01';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
