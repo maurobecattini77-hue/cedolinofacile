@@ -3489,6 +3489,27 @@
       }, function(){ cb && cb(); });
     }catch(e){ cb && cb(); }
   }
+  /* (25/10/2026) UNA RICHIESTA SOLA PER GIRO, per i limiti dei registri di Supabase: prima ogni 4 secondi ne partivano
+     tre (battito del docente, classe aperta, consegne). La porta cf_doc_giro fa le stesse tre cose nel cloud e rende
+     gli stessi dati; qui finiscono negli stessi posti (CLOUD_STUD come refreshCloudStudClasse, CLOUD_CONS come
+     refreshConsegne). Ogni 15 giri, prima della prima fotografia, con la classe aperta vuota o se la porta non
+     risponde si fa il giro di prima, identico (che sa anche accorgersi del riconoscimento scaduto). */
+  function giroDocente(){
+    var cl = (typeof CLASSE !== 'undefined' && CLASSE && CLASSE.classe) ? CLASSE.classe : '';
+    var giroDiPrima = function(){ cloudDocenteHeartbeat(); refreshCloudStudClasse(function(){ refreshConsegne(refreshStati); }); };
+    if(!SB || !cl || !STATE.cloudStudCaricato || (STATE.giriDashboard % 15) === 0){ giroDiPrima(); return; }
+    try{
+      SB.rpc('cf_doc_giro', { p_classe: cl, p_battito: !!(CLASSE.alunni && CLASSE.alunni.length) }).then(function(res){
+        var d = (res && !res.error) ? res.data : null;
+        if(!d || !Array.isArray(d.studenti) || !Array.isArray(d.consegne) || !d.studenti.length){ giroDiPrima(); return; }
+        Object.keys(CLOUD_STUD).forEach(function(pin){ if(CLOUD_STUD[pin] && CLOUD_STUD[pin].classe === cl) delete CLOUD_STUD[pin]; });
+        d.studenti.forEach(function(s){ CLOUD_STUD[s.pin] = s; });
+        CLOUD_CONS = {};
+        d.consegne.forEach(function(t){ if(!t.pin || !t.fattura_id) return; (CLOUD_CONS[t.pin] = CLOUD_CONS[t.pin] || {})[t.fattura_id] = true; });
+        refreshStati();
+      }, function(){ giroDiPrima(); });
+    }catch(e){ giroDiPrima(); }
+  }
   /* PALLINO ROSSO nella dashboard (21/09/2026). Una lettura leggera al secondo, solo della classe aperta:
      il giro grosso ogni 4 secondi sarebbe troppo lento, un'uscita lampo sfuggirebbe. Acceso finche' l'ULTIMO
      segnale dell'alunno dice «fuori» e per 3 secondi dopo il rientro; vale per chi ha un esercizio in corso
@@ -3713,7 +3734,7 @@
     } else { doRender(); }
     // il refresh periodico aggiorna SOLO stato e conteggi: non ricostruisce le tendine
     allineaOraCloud(); STATE.giriDashboard = 0;
-    STATE.collegatiTimer = setInterval(function(){ if((++STATE.giriDashboard % 75) === 0) allineaOraCloud(); cloudDocenteHeartbeat(); refreshCloudStudClasse(function(){ refreshConsegne(refreshStati); }); }, 4000);
+    STATE.collegatiTimer = setInterval(function(){ if((++STATE.giriDashboard % 75) === 0) allineaOraCloud(); giroDocente(); }, 4000);
     STATE.pallinoTimer = setInterval(refreshPallini, 1000);   // il pallino rosso: lettura leggera, una al secondo
   }
   /* 18/09/2026 — LA FIGURACCIA DELLA 5F. Mezza classe col PIN GIUSTO si sentiva dire «PIN non riconosciuto».
@@ -9963,7 +9984,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20261025-03';
+  var VERSIONE_APP = '20261025-04';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
