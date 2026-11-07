@@ -8559,6 +8559,8 @@
     v.pubblicata = (VC.val && VC.val.pubblicata) || false;
     v.data = new Date().toISOString();
     v.nome = VC.nome || '';
+    // (7/11/2026) verifica su carta dei diversificati: il segno delle pagine resta; senza righe nuove resta il voto di prima
+    if(VC.val && VC.val.carta){ v.carta = VC.val.carta; v.carta_titolo = VC.val.carta_titolo || ''; if(!v.items.length){ v.items = VC.val.items || []; v.totale = VC.val.totale; v.max_tot = VC.val.max_tot; v.perc = VC.val.perc; v.voto_finale = VC.val.voto_finale; } }
     VC.val = v;
     var upd = { valutazione:v };
     // Istantanea dei lavori dell'alunno: serve alla vista alunno DOPO il Reset (che cancella le consegne verifica).
@@ -8701,10 +8703,44 @@
     card.innerHTML = '<div class="vc-voto">' + esc(String(val.voto_finale)) + '</div>'
       + '<div style="text-align:left; min-width:0;"><div class="vc-txt-t">La tua valutazione' + (dt ? (' del ' + dt) : '') + '</div>'
       + (giud ? '<div class="vc-giud">' + esc(giud) + '</div>' : '')
-      + '<div class="vc-txt-s">Tocca per vedere il dettaglio: il tuo cedolino e quello corretto</div></div>'
+      + '<div class="vc-txt-s">' + (val.carta ? 'Tocca per vedere la tua verifica su carta corretta' : 'Tocca per vedere il dettaglio: il tuo cedolino e quello corretto') + '</div></div>'
       + '<div style="margin-left:auto; color:#3f6b52; font-size:22px;">&rsaquo;</div>';
-    card.addEventListener('click', function(){ apriValutazioneAlunno(val, snap, exitFn); });
+    card.addEventListener('click', function(){ if(val.carta) apriCartaAlunno(val); else apriValutazioneAlunno(val, snap, exitFn); });
     return card;
+  }
+  /* (7/11/2026) La verifica su carta dei diversificati, corretta dal prof: le pagine (immagini) sopra la pagina dei compiti.
+     Le da' la porta cf_carta_pagine solo a chi ha quel voto pubblicato (anche dopo il Reset, dallo storico). */
+  function apriCartaAlunno(val){
+    var pin = STATE.studente ? STATE.studente.pin : '';
+    var ov = document.createElement('div'); ov.id = 'carta-alunno';
+    ov.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; z-index:9000; background:#f4f6f3; overflow-y:auto; -webkit-overflow-scrolling:touch;';
+    var dt = fmtDataIt(val.data);
+    ov.innerHTML = '<div style="max-width:760px; margin:0 auto; padding:16px;">'
+      + '<button type="button" id="carta-torna" style="border:0; background:none; font-weight:700; color:#3f6b52; font-size:15px; padding:6px 0; cursor:pointer;">&lsaquo; Torna indietro</button>'
+      + '<div class="val-card" style="cursor:default; margin:10px 0 16px;"><div class="vc-voto">' + esc(String(val.voto_finale || '')) + '</div>'
+      + '<div style="text-align:left; min-width:0;"><div class="vc-txt-t">' + esc(val.carta_titolo || 'Verifica su carta') + (dt ? (' del ' + dt) : '') + '</div>'
+      + '<div class="vc-txt-s">Per ingrandire, allarga con due dita.</div></div></div>'
+      + '<div id="carta-pagine" style="text-align:center; color:#6b7280; font-weight:600; padding:30px 0;">Caricamento…</div></div>';
+    document.body.appendChild(ov);
+    var chiudi = function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+    byId('carta-torna').addEventListener('click', chiudi);
+    var host = byId('carta-pagine');
+    var guasto = function(){ host.textContent = 'Il collegamento non risponde: torna indietro e riprova.'; };
+    if(!SB || !pin){ guasto(); return; }
+    try{
+      SB.rpc('cf_carta_pagine', { p_pin: pin, p_id: Number(val.carta) }).then(function(res){
+        var pg = (res && !res.error && Array.isArray(res.data)) ? res.data : [];
+        if(!pg.length){ guasto(); return; }
+        host.innerHTML = ''; host.style.cssText = 'text-align:left;';
+        pg.forEach(function(src, i){
+          var t = document.createElement('div'); t.style.cssText = 'font-size:11px; font-weight:700; color:#9ca3af; letter-spacing:.1em; text-transform:uppercase; margin:0 0 4px;';
+          t.textContent = 'Pagina ' + (i + 1) + ' di ' + pg.length;
+          var im = document.createElement('img'); im.src = src; im.alt = 'Pagina ' + (i + 1);
+          im.style.cssText = 'width:100%; height:auto; display:block; border:1px solid #e5e7eb; border-radius:12px; background:#fff; margin-bottom:18px;';
+          host.appendChild(t); host.appendChild(im);
+        });
+      }, guasto);
+    }catch(e){ guasto(); }
   }
   /* Il voto pubblicato deve arrivare anche a chi sta sulla schermata «Verifica consegnata» (collaudo
      del 15/09: prima compariva solo nella pagina dei compiti, e in verifica l'alunno non lo vedeva mai).
@@ -9984,7 +10020,7 @@
      il lavoro, telefono e cloud). Mai sulla schermata del consegnato, mai durante una consegna, mai al docente.
      Il ricarico e' un F5: in classe si torna sul foglio, nei compiti alla lista. Al massimo una volta ogni
      10 minuti, cosi' un sito che risponde a meta' non la fa ricaricare in continuazione. */
-  var VERSIONE_APP = '20261025-04';
+  var VERSIONE_APP = '20261107-01';
   (function(){
     var ultimo = 0, inCorso = false;
     function visibile(id){ var el = byId(id); return !!(el && el.style.display !== 'none'); }
